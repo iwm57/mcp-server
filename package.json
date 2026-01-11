@@ -1,9 +1,14 @@
 {
   "name": "actual-bridge",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "private": true,
   "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
   "dependencies": {
-    "@actual-app/api": "^26.1.0",
-    "express": "^4.19.2"
+    "@actual-app/api": "^25.0.0",
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5"
   }
 }

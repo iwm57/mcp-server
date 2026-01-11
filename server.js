@@ -1,66 +1,86 @@
-import express from "express";
-import actual from "@actual-app/api";
-import fs from "fs";
+import express from 'express';
+import dotenv from 'dotenv';
+import * as api from '@actual-app/api';
 
-const {
-  ACTUAL_SERVER_URL,
-  ACTUAL_SERVER_PASSWORD,
-  ACTUAL_BUDGET_SYNC_ID,
-  ACTUAL_BUDGET_PASSWORD
-} = process.env;
-
-if (!ACTUAL_SERVER_URL || !ACTUAL_SERVER_PASSWORD || !ACTUAL_BUDGET_SYNC_ID) {
-  throw new Error("Missing required ACTUAL_* env vars");
-}
-
-const DATA_DIR = "/data/user-files";
-fs.mkdirSync(DATA_DIR, { recursive: true });
+dotenv.config();
 
 const app = express();
-let ready = false;
+const port = process.env.PORT || 3000;
+
+let initialized = false;
 
 async function initActual() {
-  await actual.init({
-    dataDir: DATA_DIR,
-    serverURL: ACTUAL_SERVER_URL,
-    password: ACTUAL_SERVER_PASSWORD
+  if (initialized) return;
+
+  await api.init({
+    dataDir: process.env.DATA_DIR,
+    serverURL: process.env.ACTUAL_SERVER_URL,
+    password: process.env.ACTUAL_SERVER_PASSWORD,
   });
 
-  await actual.downloadBudget(
-    ACTUAL_BUDGET_SYNC_ID,
-    ACTUAL_BUDGET_PASSWORD
-      ? { password: ACTUAL_BUDGET_PASSWORD }
+  await api.downloadBudget(
+    process.env.ACTUAL_SYNC_ID,
+    process.env.ACTUAL_BUDGET_PASSWORD
+      ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
       : undefined
   );
 
-  ready = true;
-  console.log("✅ Actual connected and budget downloaded");
+  initialized = true;
 }
 
-initActual().catch(err => {
-  console.error("❌ Actual init failed:", err);
-  process.exit(1);
+/**
+ * Health check (Coolify / MCP sanity)
+ */
+app.get('/health', async (_req, res) => {
+  res.json({ ok: true });
 });
 
-/* ---------- API ---------- */
-
-app.get("/health", (_req, res) => {
-  res.json({ ok: true, ready });
+/**
+ * Example: monthly budget snapshot
+ */
+app.get('/budget/:month', async (req, res) => {
+  try {
+    await initActual();
+    const budget = await api.getBudgetMonth(req.params.month);
+    res.json(budget);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get("/accounts", async (_req, res) => {
-  if (!ready) return res.status(503).json({ error: "Not ready" });
-  const accounts = await actual.getAccounts();
-  res.json(accounts);
+/**
+ * Example: accounts list
+ */
+app.get('/accounts', async (_req, res) => {
+  try {
+    await initActual();
+    const accounts = await api.getAccounts();
+    res.json(accounts);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.get("/balance", async (_req, res) => {
-  if (!ready) return res.status(503).json({ error: "Not ready" });
-  const accounts = await actual.getAccounts();
-  const total = accounts.reduce((s, a) => s + a.balance, 0);
-  res.json({ balance: total });
+/**
+ * Example: recent transactions (MCP-friendly)
+ */
+app.get('/transactions/recent', async (req, res) => {
+  try {
+    await initActual();
+    const since = req.query.since || '2026-01-01';
+    const txns = await api.getTransactions({ since });
+    res.json(txns);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-app.listen(8000, () => {
-  console.log("🚀 Actual bridge listening on :8000");
+process.on('SIGTERM', async () => {
+  await api.shutdown();
+  process.exit(0);
+});
+
+app.listen(port, () => {
+  console.log(`Actual bridge listening on :${port}`);
 });
