@@ -1,7 +1,18 @@
+# Base image
 FROM node:20-alpine
+
+# Working directory
 WORKDIR /app
-RUN npm i express @actual-app/api
+
+# Install dependencies
+COPY package.json .
+RUN npm install --production
+
+# Copy app
 COPY server.js .
-ENV PORT=8000
+
+# Expose port
 EXPOSE 8000
-CMD ["node","server.js"]
+
+# Run
+CMD ["npm", "start"]
