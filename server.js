@@ -63,6 +63,54 @@ app.get('/health', async (_req, res) => {
   res.json({ ok: true });
 });
 
+app.get('/debug', async (_req, res) => {
+  try {
+    // Check environment variables
+    const env = {
+      DATA_DIR: process.env.DATA_DIR,
+      ACTUAL_SERVER_URL: process.env.ACTUAL_SERVER_URL,
+      ACTUAL_SERVER_PASSWORD: !!process.env.ACTUAL_SERVER_PASSWORD,
+      ACTUAL_BUDGET_PASSWORD: !!process.env.ACTUAL_BUDGET_PASSWORD,
+      ACTUAL_SYNC_ID: process.env.ACTUAL_SYNC_ID,
+      PORT: process.env.PORT
+    };
+
+    // Check if dataDir exists and is writable
+    let dataDirStatus = {};
+    try {
+      const fs = await import('fs');
+      if (!env.DATA_DIR) {
+        dataDirStatus.exists = false;
+        dataDirStatus.error = 'DATA_DIR not set';
+      } else {
+        const exists = fs.existsSync(env.DATA_DIR);
+        dataDirStatus.exists = exists;
+        if (exists) {
+          dataDirStatus.files = fs.readdirSync(env.DATA_DIR);
+          // Try writing a test file
+          const testFile = `${env.DATA_DIR}/.bridge_test`;
+          fs.writeFileSync(testFile, 'ok');
+          fs.unlinkSync(testFile);
+          dataDirStatus.writable = true;
+        } else {
+          dataDirStatus.files = null;
+          dataDirStatus.writable = false;
+        }
+      }
+    } catch (err) {
+      dataDirStatus.error = err.message;
+    }
+
+    res.json({
+      env,
+      dataDirStatus
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
 /**
  * Monthly budget snapshot
  */
