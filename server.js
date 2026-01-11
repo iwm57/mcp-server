@@ -11,7 +11,7 @@ dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
-
+let lastInitTime = null;
 let initialized = false;
 
 async function initActual() {
@@ -21,20 +21,6 @@ async function initActual() {
   console.log('Data directory:', process.env.DATA_DIR);
   console.log('Server URL:', process.env.ACTUAL_SERVER_URL);
   console.log('Sync ID:', process.env.ACTUAL_SYNC_ID);
-  console.log('Password provided?', !!process.env.ACTUAL_SERVER_PASSWORD);
-  console.log('Budget password provided?', !!process.env.ACTUAL_BUDGET_PASSWORD);
-
-  // Check if dataDir exists
-  try {
-    if (!fs.existsSync(process.env.DATA_DIR)) {
-      console.warn('⚠️ dataDir does not exist! Creating...');
-      fs.mkdirSync(process.env.DATA_DIR, { recursive: true });
-    }
-    const files = fs.readdirSync(process.env.DATA_DIR);
-    console.log('Current files in dataDir:', files);
-  } catch (err) {
-    console.error('❌ Error reading/creating dataDir:', err);
-  }
 
   try {
     await api.init({
@@ -42,7 +28,6 @@ async function initActual() {
       serverURL: process.env.ACTUAL_SERVER_URL,
       password: process.env.ACTUAL_SERVER_PASSWORD,
     });
-    console.log('✅ API init complete');
 
     await api.downloadBudget(
       process.env.ACTUAL_SYNC_ID,
@@ -50,14 +35,17 @@ async function initActual() {
         ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
         : undefined
     );
-    console.log('✅ Budget download complete');
 
     initialized = true;
+    lastInitTime = new Date().toISOString();
+
+    console.log('✅ Actual API initialized');
   } catch (err) {
     console.error('❌ Error initializing Actual API:', err);
-    throw err; // rethrow so endpoint shows error
+    throw err;
   }
 }
+
 
 //utilize API key
 // app.use('/mcp', (req, res, next) => {
@@ -241,15 +229,6 @@ app.get('/mcp/summary/month', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
-let lastInitTime = null;
-
-async function initActual() {
-  if (initialized) return;
-  // existing code …
-  initialized = true;
-  lastInitTime = new Date().toISOString();
-}
 
 app.get('/mcp/status', (_req, res) => {
   res.json({
