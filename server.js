@@ -2,6 +2,10 @@ import express from 'express';
 import dotenv from 'dotenv';
 import * as api from '@actual-app/api';
 import fs from 'fs';
+import fetch from 'node-fetch';
+
+
+
 
 dotenv.config();
 
@@ -55,6 +59,90 @@ async function initActual() {
   }
 }
 
+app.get('/debug/full', async (_req, res) => {
+  const result = {
+    env: {},
+    dataDir: {},
+    serverPing: {},
+    downloadBudget: {}
+  };
+
+  try {
+    console.log('🔹 Starting full debug of Actual API');
+
+    // 1️⃣ Check env vars
+    result.env = {
+      DATA_DIR: process.env.DATA_DIR,
+      ACTUAL_SERVER_URL: process.env.ACTUAL_SERVER_URL,
+      ACTUAL_SERVER_PASSWORD: !!process.env.ACTUAL_SERVER_PASSWORD,
+      ACTUAL_BUDGET_PASSWORD: !!process.env.ACTUAL_BUDGET_PASSWORD,
+      ACTUAL_SYNC_ID: process.env.ACTUAL_SYNC_ID,
+      PORT: process.env.PORT
+    };
+
+    // 2️⃣ Check /data directory
+    try {
+      const dataDir = process.env.DATA_DIR;
+      if (!dataDir) throw new Error('DATA_DIR not set');
+      result.dataDir.exists = fs.existsSync(dataDir);
+      if (result.dataDir.exists) {
+        result.dataDir.files = fs.readdirSync(dataDir);
+        const testFile = `${dataDir}/.bridge_test`;
+        fs.writeFileSync(testFile, 'ok');
+        fs.unlinkSync(testFile);
+        result.dataDir.writable = true;
+      } else {
+        result.dataDir.writable = false;
+      }
+    } catch (err) {
+      result.dataDir.error = err.message;
+    }
+
+    // 3️⃣ Test connectivity to Actual server
+    try {
+      const resp = await fetch(process.env.ACTUAL_SERVER_URL);
+      result.serverPing.ok = resp.ok;
+      result.serverPing.status = resp.status;
+    } catch (err) {
+      result.serverPing.ok = false;
+      result.serverPing.error = err.message;
+    }
+
+    // 4️⃣ Try initializing Actual API
+    try {
+      await api.init({
+        dataDir: process.env.DATA_DIR,
+        serverURL: process.env.ACTUAL_SERVER_URL,
+        password: process.env.ACTUAL_SERVER_PASSWORD
+      });
+
+      // 5️⃣ Try downloading budget
+      try {
+        await api.downloadBudget(
+          process.env.ACTUAL_SYNC_ID,
+          process.env.ACTUAL_BUDGET_PASSWORD
+            ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
+            : undefined
+        );
+        result.downloadBudget.success = true;
+        result.downloadBudget.files = fs.readdirSync(process.env.DATA_DIR);
+      } catch (err) {
+        result.downloadBudget.success = false;
+        result.downloadBudget.error = err.message;
+      }
+
+      await api.shutdown();
+    } catch (err) {
+      result.downloadBudget.success = false;
+      result.downloadBudget.error = 'API init failed: ' + err.message;
+    }
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: 'Unexpected error', details: err.message });
+  }
+});
+
 /**
  * Health check
  */
@@ -107,40 +195,6 @@ app.get('/debug', async (_req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/debug/full', async (_req, res) => {
-  try {
-    console.log('🔹 Starting full debug of Actual API');
-
-    await api.init({
-      dataDir: process.env.DATA_DIR,
-      serverURL: process.env.ACTUAL_SERVER_URL,
-      password: process.env.ACTUAL_SERVER_PASSWORD,
-    });
-
-    try {
-      await api.downloadBudget(
-        process.env.ACTUAL_SYNC_ID,
-        process.env.ACTUAL_BUDGET_PASSWORD
-          ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
-          : undefined
-      );
-      res.json({
-        message: 'Budget download succeeded',
-        dataDirFiles: fs.readdirSync(process.env.DATA_DIR)
-      });
-    } catch (err) {
-      res.json({
-        message: 'Budget download failed',
-        error: err.message
-      });
-    } finally {
-      await api.shutdown();
-    }
-  } catch (err) {
-    res.json({ error: 'API init failed', details: err.message });
   }
 });
 
