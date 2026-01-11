@@ -59,89 +59,206 @@ async function initActual() {
   }
 }
 
-app.get('/debug/full', async (_req, res) => {
-  const result = {
-    env: {},
-    dataDir: {},
-    serverPing: {},
-    downloadBudget: {}
-  };
+//utilize API key
+// app.use('/mcp', (req, res, next) => {
+//   if (!process.env.BRIDGE_API_KEY) return next();
 
+//   if (req.headers['x-api-key'] !== process.env.BRIDGE_API_KEY) {
+//     return res.status(401).json({ error: 'Unauthorized' });
+//   }
+//   next();
+// });
+
+
+app.get('/mcp/capabilities', (_req, res) => {
+  res.json({
+    write: ['add_transaction'],
+    read: [
+      'list_accounts',
+      'list_categories',
+      'query_transactions',
+      'monthly_summary',
+      'category_summary'
+    ],
+    features: {
+      dryRun: true,
+      idempotency: true
+    }
+  });
+});
+
+app.get('/mcp/accounts', async (_req, res) => {
   try {
-    console.log('🔹 Starting full debug of Actual API');
+    await initActual();
+    const accounts = await api.getAccounts();
 
-    // 1️⃣ Check env vars
-    result.env = {
-      DATA_DIR: process.env.DATA_DIR,
-      ACTUAL_SERVER_URL: process.env.ACTUAL_SERVER_URL,
-      ACTUAL_SERVER_PASSWORD: !!process.env.ACTUAL_SERVER_PASSWORD,
-      ACTUAL_BUDGET_PASSWORD: !!process.env.ACTUAL_BUDGET_PASSWORD,
-      ACTUAL_SYNC_ID: process.env.ACTUAL_SYNC_ID,
-      PORT: process.env.PORT
-    };
-
-    // 2️⃣ Check /data directory
-    try {
-      const dataDir = process.env.DATA_DIR;
-      if (!dataDir) throw new Error('DATA_DIR not set');
-      result.dataDir.exists = fs.existsSync(dataDir);
-      if (result.dataDir.exists) {
-        result.dataDir.files = fs.readdirSync(dataDir);
-        const testFile = `${dataDir}/.bridge_test`;
-        fs.writeFileSync(testFile, 'ok');
-        fs.unlinkSync(testFile);
-        result.dataDir.writable = true;
-      } else {
-        result.dataDir.writable = false;
-      }
-    } catch (err) {
-      result.dataDir.error = err.message;
-    }
-
-    // 3️⃣ Test connectivity to Actual server
-    try {
-      const resp = await fetch(process.env.ACTUAL_SERVER_URL);
-      result.serverPing.ok = resp.ok;
-      result.serverPing.status = resp.status;
-    } catch (err) {
-      result.serverPing.ok = false;
-      result.serverPing.error = err.message;
-    }
-
-    // 4️⃣ Try initializing Actual API
-    try {
-      await api.init({
-        dataDir: process.env.DATA_DIR,
-        serverURL: process.env.ACTUAL_SERVER_URL,
-        password: process.env.ACTUAL_SERVER_PASSWORD
-      });
-
-      // 5️⃣ Try downloading budget
-      try {
-        await api.downloadBudget(
-          process.env.ACTUAL_SYNC_ID,
-          process.env.ACTUAL_BUDGET_PASSWORD
-            ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
-            : undefined
-        );
-        result.downloadBudget.success = true;
-        result.downloadBudget.files = fs.readdirSync(process.env.DATA_DIR);
-      } catch (err) {
-        result.downloadBudget.success = false;
-        result.downloadBudget.error = err.message;
-      }
-
-      await api.shutdown();
-    } catch (err) {
-      result.downloadBudget.success = false;
-      result.downloadBudget.error = 'API init failed: ' + err.message;
-    }
-
-    res.json(result);
+    res.json(accounts.map(a => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      balance: a.balance / 100
+    })));
   } catch (err) {
-    res.status(500).json({ error: 'Unexpected error', details: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
+
+
+app.get('/mcp/categories', async (_req, res) => {
+  try {
+    await initActual();
+    const categories = await api.getCategories();
+
+    res.json(categories.map(c => ({
+      id: c.id,
+      name: c.name
+    })));
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
+  try {
+    await initActual();
+
+    const {
+      date,
+      amount,
+      accountId,
+      categoryId,
+      payee,
+      notes
+    } = req.body;
+
+    if (!date || !amount || !accountId) {
+      return res.status(400).json({ valid: false, error: 'Missing required fields' });
+    }
+
+    const accounts = await api.getAccounts();
+    const account = accounts.find(a => a.id === accountId);
+    if (!account) {
+      return res.status(400).json({ valid: false, error: 'Invalid accountId' });
+    }
+
+    let category = null;
+    if (categoryId) {
+      const categories = await api.getCategories();
+      category = categories.find(c => c.id === categoryId);
+      if (!category) {
+        return res.status(400).json({ valid: false, error: 'Invalid categoryId' });
+      }
+    }
+
+    res.json({
+      valid: true,
+      resolved: {
+        account: account.name,
+        category: category?.name ?? null
+      },
+      transaction: {
+        date,
+        amountCents: Math.round(amount * 100),
+        payee,
+        notes
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ valid: false, error: err.message });
+  }
+});
+
+const processedRequests = new Set(); // in-memory, OK for now
+
+app.post('/mcp/transactions/add', express.json(), async (req, res) => {
+  try {
+    await initActual();
+
+    const {
+      date,
+      amount,
+      accountId,
+      categoryId,
+      payee,
+      notes,
+      dryRun = false,
+      requestId
+    } = req.body;
+
+    if (!date || !amount || !accountId) {
+      return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    if (requestId && processedRequests.has(requestId)) {
+      return res.json({ ok: true, duplicate: true });
+    }
+
+    if (dryRun) {
+      return res.json({ ok: true, preview: true });
+    }
+
+    const txn = await api.addTransaction({
+      account: accountId,
+      date,
+      amount: Math.round(amount * 100),
+      payee_name: payee,
+      notes,
+      category: categoryId ?? null
+    });
+
+    if (requestId) processedRequests.add(requestId);
+
+    res.json({
+      ok: true,
+      transactionId: txn.id
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/mcp/summary/month', async (req, res) => {
+  try {
+    await initActual();
+    const { month } = req.query;
+
+    if (!month) {
+      return res.status(400).json({ error: 'month required (YYYY-MM)' });
+    }
+
+    const budget = await api.getBudgetMonth(month);
+
+    const income = budget.income / 100;
+    const expenses = budget.spent / 100;
+
+    res.json({
+      month,
+      income,
+      expenses,
+      net: income + expenses
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+let lastInitTime = null;
+
+async function initActual() {
+  if (initialized) return;
+  // existing code …
+  initialized = true;
+  lastInitTime = new Date().toISOString();
+}
+
+app.get('/mcp/status', (_req, res) => {
+  res.json({
+    initialized,
+    budgetLoaded: initialized,
+    lastInit: lastInitTime
+  });
+});
+
 
 /**
  * Health check
