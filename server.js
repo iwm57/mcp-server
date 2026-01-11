@@ -110,6 +110,40 @@ app.get('/debug', async (_req, res) => {
   }
 });
 
+app.get('/debug/full', async (_req, res) => {
+  try {
+    console.log('🔹 Starting full debug of Actual API');
+
+    await api.init({
+      dataDir: process.env.DATA_DIR,
+      serverURL: process.env.ACTUAL_SERVER_URL,
+      password: process.env.ACTUAL_SERVER_PASSWORD,
+    });
+
+    try {
+      await api.downloadBudget(
+        process.env.ACTUAL_SYNC_ID,
+        process.env.ACTUAL_BUDGET_PASSWORD
+          ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
+          : undefined
+      );
+      res.json({
+        message: 'Budget download succeeded',
+        dataDirFiles: fs.readdirSync(process.env.DATA_DIR)
+      });
+    } catch (err) {
+      res.json({
+        message: 'Budget download failed',
+        error: err.message
+      });
+    } finally {
+      await api.shutdown();
+    }
+  } catch (err) {
+    res.json({ error: 'API init failed', details: err.message });
+  }
+});
+
 
 /**
  * Monthly budget snapshot
