@@ -10,6 +10,7 @@ import fetch from 'node-fetch';
 dotenv.config();
 
 const app = express();
+app.use(express.json());
 const port = process.env.PORT || 3000;
 let lastInitTime = null;
 let initialized = false;
@@ -175,16 +176,22 @@ app.post('/mcp/transactions/add', async (req, res) => {
   try {
     await initActual();
 
-    const { dryRun, requestId, ...tx } = req.body;
+    // Ensure body exists
+    if (!req.body) {
+      return res.status(400).json({ error: "Missing JSON body" });
+    }
 
-    // Build the transaction object in Actual format
+    const { dryRun = false, requestId, ...tx } = req.body;
+
+    // Build transaction in Actual API format
     const txn = {
       date: tx.date,
       amount: Math.round(tx.amount * 100), // dollars → cents
+      accountId: tx.accountId,
       category: tx.categoryId,
-      payee: tx.payee_name ?? tx.payee,   // you can support payee_name or raw payee
+      payee: tx.payee_name ?? tx.payee,
       notes: tx.notes,
-      imported_id: requestId              // idempotency
+      imported_id: requestId
     };
 
     if (dryRun) {
@@ -194,7 +201,7 @@ app.post('/mcp/transactions/add', async (req, res) => {
       });
     }
 
-    // Use addTransactions (expects an array)
+    // Add the transaction using addTransactions (expects an array)
     const createdIds = await api.addTransactions(tx.accountId, [txn]);
 
     res.json({
@@ -202,6 +209,7 @@ app.post('/mcp/transactions/add', async (req, res) => {
       transactionIds: createdIds
     });
   } catch (err) {
+    console.error("❌ Error adding transaction:", err);
     res.status(500).json({ error: err.message });
   }
 });
