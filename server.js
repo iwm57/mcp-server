@@ -171,52 +171,41 @@ app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
 
 const processedRequests = new Set(); // in-memory, OK for now
 
-app.post('/mcp/transactions/add', express.json(), async (req, res) => {
+app.post('/mcp/transactions/add', async (req, res) => {
   try {
     await initActual();
 
-    const {
-      date,
-      amount,
-      accountId,
-      categoryId,
-      payee,
-      notes,
-      dryRun = false,
-      requestId
-    } = req.body;
+    const { dryRun, requestId, ...tx } = req.body;
 
-    if (!date || !amount || !accountId) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    if (requestId && processedRequests.has(requestId)) {
-      return res.json({ ok: true, duplicate: true });
-    }
+    // Build the transaction object in Actual format
+    const txn = {
+      date: tx.date,
+      amount: Math.round(tx.amount * 100), // dollars → cents
+      category: tx.categoryId,
+      payee: tx.payee_name ?? tx.payee,   // you can support payee_name or raw payee
+      notes: tx.notes,
+      imported_id: requestId              // idempotency
+    };
 
     if (dryRun) {
-      return res.json({ ok: true, preview: true });
+      return res.json({
+        ok: true,
+        transaction: { ...txn }
+      });
     }
 
-    const txn = await api.addTransaction({
-      account: accountId,
-      date,
-      amount: Math.round(amount * 100),
-      payee_name: payee,
-      notes,
-      category: categoryId ?? null
-    });
-
-    if (requestId) processedRequests.add(requestId);
+    // Use addTransactions (expects an array)
+    const createdIds = await api.addTransactions(tx.accountId, [txn]);
 
     res.json({
       ok: true,
-      transactionId: txn.id
+      transactionIds: createdIds
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 app.get('/mcp/summary/month', async (req, res) => {
   try {
