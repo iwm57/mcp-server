@@ -176,18 +176,13 @@ app.post('/mcp/transactions/add', async (req, res) => {
   try {
     await initActual();
 
-    // Ensure body exists
-    if (!req.body) {
-      return res.status(400).json({ error: "Missing JSON body" });
-    }
+    if (!req.body) return res.status(400).json({ error: "Missing JSON body" });
 
     const { dryRun = false, requestId, ...tx } = req.body;
 
-    // Build transaction in Actual API format
     const txn = {
       date: tx.date,
-      amount: Math.round(tx.amount * 100), // dollars → cents
-      accountId: tx.accountId,
+      amount: Math.round(tx.amount * 100),
       category: tx.categoryId,
       payee: tx.payee_name ?? tx.payee,
       notes: tx.notes,
@@ -195,19 +190,12 @@ app.post('/mcp/transactions/add', async (req, res) => {
     };
 
     if (dryRun) {
-      return res.json({
-        ok: true,
-        transaction: { ...txn }
-      });
+      return res.json({ ok: true, transaction: txn });
     }
 
-    // Add the transaction using addTransactions (expects an array)
     const createdIds = await api.addTransactions(tx.accountId, [txn]);
 
-    res.json({
-      ok: true,
-      transactionIds: createdIds
-    });
+    res.json({ ok: true, transactionIds: createdIds });
   } catch (err) {
     console.error("❌ Error adding transaction:", err);
     res.status(500).json({ error: err.message });
