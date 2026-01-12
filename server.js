@@ -74,6 +74,7 @@ app.get('/mcp/capabilities', (_req, res) => {
     }
   });
 });
+
 app.get('/mcp/accounts', async (_req, res) => {
   try {
     await initActual();
@@ -82,18 +83,17 @@ app.get('/mcp/accounts', async (_req, res) => {
     const result = await Promise.all(accounts.map(async (a) => {
       let balance = null;
       try {
+        // Try getting a real balance
         const b = await api.getAccountBalance(a.id);
         balance = b / 100;
       } catch (e) {
+        // Fallback if something goes wrong
         balance = null;
       }
-
       return {
         id: a.id,
         name: a.name,
-        type: a.type,            // actual type field from API
-        offbudget: a.offbudget ?? false,
-        closed: a.closed ?? false,
+        type: a.type,
         balance
       };
     }));
@@ -103,7 +103,6 @@ app.get('/mcp/accounts', async (_req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-
 
 
 app.get('/mcp/categories', async (_req, res) => {
