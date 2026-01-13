@@ -178,13 +178,25 @@ app.post('/mcp/transactions/add', async (req, res) => {
 
     if (!req.body) return res.status(400).json({ error: "Missing JSON body" });
 
-    const { dryRun = false, requestId, ...tx } = req.body;
+    const { dryRun = false, requestId, account: accountName, category: categoryName, ...tx } = req.body;
+
+    // fetch accounts and categories once
+    const accounts = await api.getAccounts();
+    const categories = await api.getCategories();
+
+    const account = accounts.find(a => a.name === accountName);
+    if (!account) return res.status(400).json({ error: `Account not found: ${accountName}` });
+
+    let category = null;
+    if (categoryName) {
+      category = categories.find(c => c.name === categoryName);
+      if (!category) return res.status(400).json({ error: `Category not found: ${categoryName}` });
+    }
 
     const txn = {
       date: tx.date,
       amount: Math.round(tx.amount * 100),
-      category: tx.categoryId,
-      payee: tx.payee_name ?? tx.payee,
+      category: category?.id,
       notes: tx.notes,
       imported_id: requestId
     };
@@ -193,7 +205,7 @@ app.post('/mcp/transactions/add', async (req, res) => {
       return res.json({ ok: true, transaction: txn });
     }
 
-    const createdIds = await api.addTransactions(tx.accountId, [txn]);
+    const createdIds = await api.addTransactions(account.id, [txn]);
 
     res.json({ ok: true, transactionIds: createdIds });
   } catch (err) {
@@ -201,6 +213,7 @@ app.post('/mcp/transactions/add', async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 
 
 app.get('/mcp/summary/month', async (req, res) => {
