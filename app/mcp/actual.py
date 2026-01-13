@@ -111,27 +111,6 @@ async def add_transaction(payload: dict):
 async def status():
     return await bridge_get(f"{ACTUAL_BRIDGE_URL}/mcp/status")
   
-  
-  
-from fastapi import APIRouter, HTTPException
-from app.http import bridge_get, bridge_post
-from app.config import ACTUAL_BRIDGE_URL
-
-router = APIRouter(prefix="/mcp", tags=["MCP"])
-
-# Tool metadata — reuse from /capabilities
-TOOLS = {
-    "read": {
-        "accounts": {"endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/accounts", "method": "GET"},
-        "categories": {"endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/categories", "method": "GET"},
-        "transactions": {"endpoint": f"{ACTUAL_BRIDGE_URL}/transactions/recent", "method": "GET"},
-        "monthly_summary": {"endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/summary/month", "method": "GET"}
-    },
-    "write": {
-        "add_transaction": {"endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/transactions/add", "method": "POST"}
-    }
-}
-
 
 @router.post("/execute")
 async def execute(tool: str, arguments: dict):
@@ -176,25 +155,34 @@ async def execute(tool: str, arguments: dict):
 
 
 
-# ---------- CAPABILITIES ----------
-
-@router.get("/capabilities")
-async def capabilities():
-    return {
-        "read": [
-            "accounts",
-            "categories",
-            "transactions",
-            "monthly_summary"
-        ],
-        "write": [
-            "add_transaction"
-        ],
-        "features": {
-            "dryRun": True,
-            "idempotency": True
+# ---------- TOOLS ----------
+@router.get("/tools")
+async def tools():
+    return [
+        {
+            "name": "accounts",
+            "description": "List all accounts",
+            "type": "read",
+            "endpoint": "/accounts",
+            "method": "GET",
+            "args": []
+        },
+        {
+            "name": "add_transaction",
+            "description": "Add a transaction",
+            "type": "write",
+            "endpoint": "/transactions/add",
+            "method": "POST",
+            "args": [
+                {"name": "account", "type": "string", "required": True},
+                {"name": "category", "type": "string", "required": True},
+                {"name": "amount", "type": "number", "required": True},
+                {"name": "date", "type": "string", "required": True}
+            ]
         }
-    }
+    ]
+    
+
 
 # ---------- READ ----------
 
