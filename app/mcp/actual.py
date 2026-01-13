@@ -23,7 +23,7 @@ TOOLS = {
     },
     "add_transaction": {
         "type": "write",
-        "description": "Add a transaction using an exact account and category match.",
+        "description": "Add a transaction",
         "endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/transactions/add",
         "method": "POST",
         "args": [
@@ -31,7 +31,6 @@ TOOLS = {
             {"name": "category", "type": "string", "required": True, "description": "Exact name of the category"},
             {"name": "amount", "type": "number", "required": True, "description": "Amount of the transaction"},
             {"name": "date", "type": "string", "required": True, "description": "Date in YYYY-MM-DD format"},
-            {"name": "payee", "type": "string", "required": False, "description": "Used for transfers; must be the exact name of another account"},
             {"name": "notes", "type": "string", "required": False, "description": "Short description of what the transaction is for"}
         ]
     }
