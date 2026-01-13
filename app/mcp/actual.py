@@ -23,7 +23,7 @@ TOOLS = {
     },
     "add_transaction": {
         "type": "write",
-        "description": "Add a transaction. Ensure that you use an actual existing account, the name must be an exact match.",
+        "description": "Add a transaction. Ensure that you use an actual existing account, and existing category, the name must be an exact match. You can add short details/descriptions in notes.",
         "endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/transactions/add",
         "method": "POST",
         "args": [
