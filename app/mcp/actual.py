@@ -23,16 +23,16 @@ TOOLS = {
     },
     "add_transaction": {
         "type": "write",
-        "description": "Add a transaction. Ensure that you use an actual existing account, and existing category, the name must be an exact match. Notes is best used to record more details about the transaction. Payee is used for transfers and must be the exact name of another existing account.",
+        "description": "Add a transaction using an exact account and category match.",
         "endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/transactions/add",
         "method": "POST",
         "args": [
-            {"name": "account", "type": "string", "required": True},
-            {"name": "category", "type": "string", "required": True},
-            {"name": "amount", "type": "number", "required": True},
-            {"name": "date", "type": "string", "required": True},
-            {"name": "payee", "type": "string", "required": False},
-            {"name": "notes", "type": "string", "required": False}
+            {"name": "account", "type": "string", "required": true, "description": "Exact name of the account to add the transaction to"},
+            {"name": "category", "type": "string", "required": true, "description": "Exact name of the category"},
+            {"name": "amount", "type": "number", "required": true, "description": "Amount of the transaction"},
+            {"name": "date", "type": "string", "required": true, "description": "Date in YYYY-MM-DD format"},
+            {"name": "payee", "type": "string", "required": false, "description": "Used for transfers; must be the exact name of another account"},
+            {"name": "notes", "type": "string", "required": false, "description": "Short description of what the transaction is for"}
         ]
     }
 }
