@@ -27,12 +27,12 @@ TOOLS = {
         "endpoint": f"{ACTUAL_BRIDGE_URL}/mcp/transactions/add",
         "method": "POST",
         "args": [
-            {"name": "account", "type": "string", "required": true, "description": "Exact name of the account to add the transaction to"},
-            {"name": "category", "type": "string", "required": true, "description": "Exact name of the category"},
-            {"name": "amount", "type": "number", "required": true, "description": "Amount of the transaction"},
-            {"name": "date", "type": "string", "required": true, "description": "Date in YYYY-MM-DD format"},
-            {"name": "payee", "type": "string", "required": false, "description": "Used for transfers; must be the exact name of another account"},
-            {"name": "notes", "type": "string", "required": false, "description": "Short description of what the transaction is for"}
+            {"name": "account", "type": "string", "required": True, "description": "Exact name of the account to add the transaction to"},
+            {"name": "category", "type": "string", "required": True, "description": "Exact name of the category"},
+            {"name": "amount", "type": "number", "required": True, "description": "Amount of the transaction"},
+            {"name": "date", "type": "string", "required": True, "description": "Date in YYYY-MM-DD format"},
+            {"name": "payee", "type": "string", "required": False, "description": "Used for transfers; must be the exact name of another account"},
+            {"name": "notes", "type": "string", "required": False, "description": "Short description of what the transaction is for"}
         ]
     }
 }
