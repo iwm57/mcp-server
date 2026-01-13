@@ -171,7 +171,6 @@ app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
 });
 
 const processedRequests = new Set(); // in-memory, OK for now
-
 app.post('/mcp/transactions/add', async (req, res) => {
   try {
     await initActual();
@@ -180,7 +179,7 @@ app.post('/mcp/transactions/add', async (req, res) => {
 
     const { dryRun = false, requestId, account: accountName, category: categoryName, ...tx } = req.body;
 
-    // fetch accounts and categories once
+    // Fetch accounts and categories once
     const accounts = await api.getAccounts();
     const categories = await api.getCategories();
 
@@ -197,17 +196,43 @@ app.post('/mcp/transactions/add', async (req, res) => {
       date: tx.date,
       amount: Math.round(tx.amount * 100),
       category: category?.id,
+      payee: tx.payee_name ?? tx.payee,
       notes: tx.notes,
       imported_id: requestId
     };
 
     if (dryRun) {
-      return res.json({ ok: true, transaction: txn });
+      return res.json({
+        ok: true,
+        transaction: {
+          account: account.name,
+          category: category?.name ?? null,
+          amount: tx.amount,
+          date: tx.date,
+          payee: txn.payee,
+          notes: txn.notes
+        },
+        message: "✅ Dry run successful"
+      });
     }
 
     const createdIds = await api.addTransactions(account.id, [txn]);
 
-    res.json({ ok: true, transactionIds: createdIds });
+    // Return a recap
+    res.json({
+      ok: true,
+      transaction: {
+        account: account.name,
+        category: category?.name ?? null,
+        amount: tx.amount,
+        date: tx.date,
+        payee: txn.payee,
+        notes: txn.notes,
+        id: createdIds[0] ?? null
+      },
+      message: "✅ Transaction added successfully"
+    });
+
   } catch (err) {
     console.error("❌ Error adding transaction:", err);
     res.status(500).json({ error: err.message });
