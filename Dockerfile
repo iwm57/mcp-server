@@ -3,16 +3,32 @@ FROM python:3.11-slim
 # Set working directory
 WORKDIR /app
 
-# Install dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy app
-COPY app ./app
-COPY .env ./
+# Copy dependency files
+COPY pyproject.toml ./
 
-# Expose port
-EXPOSE 8000
+# Install Python dependencies
+RUN pip install --no-cache-dir -e .
 
-# Run Uvicorn
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Copy mcp_server package
+COPY mcp_server/ ./mcp_server/
+
+# Copy environment file template
+COPY .env.example ./
+
+# Create non-root user
+RUN useradd -m -u 1000 mcpuser && chown -R mcpuser:mcpuser /app
+USER mcpuser
+
+# Set environment variables
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# The server runs on STDIO, no port exposure needed
+# For MCP Inspector testing, run: mcp-inspector python -m mcp_server.server
+
+# Run the MCP server
+CMD ["python", "-m", "mcp_server.server"]
