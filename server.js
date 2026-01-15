@@ -101,6 +101,7 @@ app.get('/mcp/accounts', async (_req, res) => {
 
     res.json(result);
   } catch (err) {
+    console.error('❌ Error in /mcp/accounts:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -116,6 +117,7 @@ app.get('/mcp/categories', async (_req, res) => {
       name: c.name
     })));
   } catch (err) {
+    console.error('❌ Error in /mcp/categories:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -166,6 +168,7 @@ app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
       }
     });
   } catch (err) {
+    console.error('❌ Error in /mcp/transactions/preview:', err);
     res.status(500).json({ valid: false, error: err.message });
   }
 });
@@ -179,17 +182,32 @@ app.post('/mcp/transactions/add', async (req, res) => {
 
     const { dryRun = false, requestId, account: accountName, category: categoryName, ...tx } = req.body;
 
+    console.log('📝 Add transaction request:', {
+      accountName,
+      categoryName,
+      tx,
+      dryRun
+    });
+
     // Fetch accounts and categories once
     const accounts = await api.getAccounts();
     const categories = await api.getCategories();
 
     const account = accounts.find(a => a.name === accountName);
-    if (!account) return res.status(400).json({ error: `Account not found: ${accountName}` });
+    if (!account) {
+      console.error('❌ Account not found:', accountName);
+      console.log('Available accounts:', accounts.map(a => a.name));
+      return res.status(400).json({ error: `Account not found: ${accountName}` });
+    }
 
     let category = null;
     if (categoryName) {
       category = categories.find(c => c.name === categoryName);
-      if (!category) return res.status(400).json({ error: `Category not found: ${categoryName}` });
+      if (!category) {
+        console.error('❌ Category not found:', categoryName);
+        console.log('Available categories:', categories.map(c => c.name));
+        return res.status(400).json({ error: `Category not found: ${categoryName}` });
+      }
     }
 
     const txn = {
@@ -200,6 +218,8 @@ app.post('/mcp/transactions/add', async (req, res) => {
       notes: tx.notes,
       imported_id: requestId
     };
+
+    console.log('💰 Transaction to add:', txn);
 
     if (dryRun) {
       return res.json({
@@ -216,26 +236,41 @@ app.post('/mcp/transactions/add', async (req, res) => {
       });
     }
 
-    const createdIds = await api.addTransactions(account.id, [txn]);
+    try {
+      const createdIds = await api.addTransactions(account.id, [txn]);
+      console.log('✅ Transaction added with IDs:', createdIds);
 
-    // Return a recap
-    res.json({
-      ok: true,
-      transaction: {
-        account: account.name,
-        category: category?.name ?? null,
-        amount: tx.amount,
-        date: tx.date,
-        payee: txn.payee,
-        notes: txn.notes,
-        id: createdIds[0] ?? null
-      },
-      message: "✅ Transaction added successfully"
-    });
+      // Return a recap
+      res.json({
+        ok: true,
+        transaction: {
+          account: account.name,
+          category: category?.name ?? null,
+          amount: tx.amount,
+          date: tx.date,
+          payee: txn.payee,
+          notes: txn.notes,
+          id: createdIds[0] ?? null
+        },
+        message: "✅ Transaction added successfully"
+      });
+    } catch (apiErr) {
+      console.error('❌ API error adding transaction:', apiErr);
+      // Don't crash the server, return error to client
+      res.status(500).json({
+        ok: false,
+        error: `Failed to add transaction: ${apiErr.message}`,
+        details: apiErr.toString()
+      });
+    }
 
   } catch (err) {
-    console.error("❌ Error adding transaction:", err);
-    res.status(500).json({ error: err.message });
+    console.error("❌ Error in /mcp/transactions/add:", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+      stack: err.stack
+    });
   }
 });
 
@@ -262,6 +297,7 @@ app.get('/mcp/summary/month', async (req, res) => {
       net: income + expenses
     });
   } catch (err) {
+    console.error('❌ Error in /mcp/summary/month:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -369,11 +405,19 @@ app.get('/transactions/recent', async (req, res) => {
     const since = req.query.since || '2026-01-01';
     console.log('💳 Fetching recent transactions since', since);
     await initActual();
+    
+    console.log('Calling api.getTransactions with:', { since });
     const txns = await api.getTransactions({ since });
-    res.json(txns);
+    console.log(`✅ Retrieved ${txns?.length || 0} transactions`);
+    
+    res.json(txns || []);
   } catch (err) {
     console.error('❌ Error fetching transactions:', err);
-    res.status(500).json({ error: err.message });
+    console.error('Error stack:', err.stack);
+    res.status(500).json({ 
+      error: err.message,
+      hint: 'Check that the date format is YYYY-MM-DD'
+    });
   }
 });
 
