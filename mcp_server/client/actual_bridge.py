@@ -1,28 +1,19 @@
 import httpx
-from pydantic_settings import BaseSettings, SettingsConfigDict
+import os
 import logging
 
 logger = logging.getLogger(__name__)
-
-
-class Settings(BaseSettings):
-    """Configuration settings for MCP server"""
-
-    actual_bridge_url: str = "http://actual-bridge:3000"
-
-    model_config = SettingsConfigDict(
-        env_file=".env",
-        case_sensitive=False,
-        extra='ignore'  # Ignore extra fields like LOG_LEVEL
-    )
 
 
 class ActualBridgeClient:
     """HTTP client to communicate with actual-bridge API"""
 
     def __init__(self):
-        settings = Settings()
-        self.base_url = settings.actual_bridge_url.rstrip('/')
+        # Read from environment variable with fallback
+        self.base_url = os.getenv(
+            "ACTUAL_BRIDGE_URL",
+            "http://actual-bridge:3000"
+        ).rstrip('/')
         self.timeout = 30
         self._client: httpx.AsyncClient = None
 
