@@ -1,3 +1,3 @@
-"""MCP Server for Actual Budget integration"""
+"""Actual Budget MCP Server"""
 
 __version__ = "1.0.0"
