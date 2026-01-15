@@ -139,7 +139,7 @@ async def get_recent_transactions(since_date: str = None) -> list[dict]:
 
 def main():
     """Main entry point for the MCP server"""
-    
+
     logger.info("Starting Actual Budget MCP Server...")
     logger.info("Available tools:")
     logger.info("  - list_accounts")
@@ -147,7 +147,7 @@ def main():
     logger.info("  - get_monthly_summary")
     logger.info("  - add_transaction")
     logger.info("  - get_recent_transactions")
-    
+
     # Run the server using STDIO transport
     # This will read JSON-RPC messages from stdin and write to stdout
     mcp.run()
