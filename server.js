@@ -399,24 +399,45 @@ app.get('/accounts', async (_req, res) => {
 
 /**
  * Recent transactions
+ * FIXED: Get all transactions and filter by date locally
  */
 app.get('/transactions/recent', async (req, res) => {
   try {
-    const since = req.query.since || '2026-01-01';
-    console.log('💳 Fetching recent transactions since', since);
+    const since = req.query.since;
+    console.log('💳 Fetching recent transactions' + (since ? ` since ${since}` : ''));
+    
     await initActual();
     
-    console.log('Calling api.getTransactions with:', { since });
-    const txns = await api.getTransactions({ since });
-    console.log(`✅ Retrieved ${txns?.length || 0} transactions`);
+    // Get all transactions (API doesn't support date filtering directly)
+    console.log('Fetching all transactions...');
+    const txns = await api.getTransactions();
+    console.log(`✅ Retrieved ${txns?.length || 0} total transactions`);
     
-    res.json(txns || []);
+    // Filter by date if 'since' parameter provided
+    let filtered = txns || [];
+    if (since) {
+      const sinceDate = new Date(since);
+      filtered = txns.filter(t => {
+        const txnDate = new Date(t.date);
+        return txnDate >= sinceDate;
+      });
+      console.log(`✅ Filtered to ${filtered.length} transactions since ${since}`);
+    }
+    
+    // Sort by date descending (newest first)
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    // Limit to 100 most recent
+    const recent = filtered.slice(0, 100);
+    console.log(`✅ Returning ${recent.length} most recent transactions`);
+    
+    res.json(recent);
   } catch (err) {
     console.error('❌ Error fetching transactions:', err);
     console.error('Error stack:', err.stack);
     res.status(500).json({ 
       error: err.message,
-      hint: 'Check that the date format is YYYY-MM-DD'
+      hint: 'Error retrieving transactions from Actual Budget API'
     });
   }
 });
