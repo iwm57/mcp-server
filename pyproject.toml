@@ -10,6 +10,10 @@ dependencies = [
 
 [project.scripts]
 actual-mcp-server = "mcp_server.server:main"
+mcp-actual = "mcp_server.server:main"
+
+[project.entry-points."mcp.servers"]
+actual = "mcp_server.server:main"
 
 [build-system]
 requires = ["hatchling"]
