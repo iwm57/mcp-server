@@ -347,8 +347,8 @@ app.get('/mcp/summary/month', async (req, res) => {
 
     const budget = await api.getBudgetMonth(month);
 
-    const income = budget.income / 100;
-    const expenses = budget.spent / 100;
+    const income = budget.totalIncome / 100;
+    const expenses = budget.totalSpent / 100;
 
     res.json({
       month,
