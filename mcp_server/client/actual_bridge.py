@@ -14,13 +14,26 @@ class ActualBridgeClient:
             "ACTUAL_BRIDGE_URL",
             "http://actual-bridge:3000"
         ).rstrip('/')
+        self.sync_id = os.getenv("ACTUAL_SYNC_ID", None)
+        self.file_password = os.getenv("ACTUAL_FILE_PASSWORD", None)
         self.timeout = 30
         self._client: httpx.AsyncClient = None
 
     async def __aenter__(self):
+        headers = {}
+
+        # Add sync_id header if provided
+        if self.sync_id:
+            headers["x-actual-sync-id"] = self.sync_id
+
+        # Add file password header if provided
+        if self.file_password:
+            headers["x-actual-file-password"] = self.file_password
+
         self._client = httpx.AsyncClient(
             timeout=self.timeout,
-            verify=False  # Skip SSL verification for self-signed certificates
+            verify=False,  # Skip SSL verification for self-signed certificates
+            headers=headers
         )
         return self
 
