@@ -5,8 +5,6 @@ import fs from 'fs';
 import fetch from 'node-fetch';
 
 
-
-
 dotenv.config();
 
 const app = express();
@@ -15,13 +13,28 @@ const port = process.env.PORT || 3000;
 let lastInitTime = null;
 let initialized = false;
 
-async function initActual() {
-  if (initialized) return;
+// NEW: Track initialized budgets by sync_id
+const initializedBudgets = new Map(); // sync_id -> {api, initialized, filePassword}
 
-  console.log('🔹 Initializing Actual API...');
+async function initActual(syncId = null, filePassword = null) {
+  // Use sync_id from parameter, or environment variable if not provided
+  const effectiveSyncId = syncId || process.env.ACTUAL_SYNC_ID;
+
+  // Check if this budget is already initialized
+  if (effectiveSyncId && initializedBudgets.has(effectiveSyncId)) {
+    console.log(`✅ Using cached initialization for sync_id: ${effectiveSyncId}`);
+    return initializedBudgets.get(effectiveSyncId);
+  }
+
+  // If no sync_id provided and already initialized globally, use that
+  if (!effectiveSyncId && initialized) {
+    console.log('✅ Using global initialization');
+    return api;
+  }
+
+  console.log(`🔹 Initializing Actual API for sync_id: ${effectiveSyncId}`);
   console.log('Data directory:', process.env.DATA_DIR);
   console.log('Server URL:', process.env.ACTUAL_SERVER_URL);
-  console.log('Sync ID:', process.env.ACTUAL_SYNC_ID);
 
   try {
     await api.init({
@@ -31,18 +44,25 @@ async function initActual() {
     });
 
     await api.downloadBudget(
-      process.env.ACTUAL_SYNC_ID,
-      process.env.ACTUAL_BUDGET_PASSWORD
-        ? { password: process.env.ACTUAL_BUDGET_PASSWORD }
+      effectiveSyncId,
+      filePassword || process.env.ACTUAL_BUDGET_PASSWORD
+        ? { password: filePassword || process.env.ACTUAL_BUDGET_PASSWORD }
         : undefined
     );
 
-    initialized = true;
+    // Cache this initialization
+    if (effectiveSyncId) {
+      initializedBudgets.set(effectiveSyncId, { api, initialized: true, filePassword });
+    } else {
+      initialized = true;
+    }
+
     lastInitTime = new Date().toISOString();
 
-    console.log('✅ Actual API initialized');
+    console.log(`✅ Actual API initialized for sync_id: ${effectiveSyncId}`);
+    return api;
   } catch (err) {
-    console.error('❌ Error initializing Actual API:', err);
+    console.error(`❌ Error initializing sync_id ${effectiveSyncId}:`, err);
     throw err;
   }
 }
@@ -76,9 +96,17 @@ app.get('/mcp/capabilities', (_req, res) => {
   });
 });
 
-app.get('/mcp/accounts', async (_req, res) => {
+app.get('/mcp/accounts', async (req, res) => {
   try {
-    await initActual();
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
     const accounts = await api.getAccounts();
 
     const result = await Promise.all(accounts.map(async (a) => {
@@ -107,9 +135,17 @@ app.get('/mcp/accounts', async (_req, res) => {
 });
 
 
-app.get('/mcp/categories', async (_req, res) => {
+app.get('/mcp/categories', async (req, res) => {
   try {
-    await initActual();
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
     const categories = await api.getCategories();
 
     res.json(categories.map(c => ({
@@ -124,7 +160,15 @@ app.get('/mcp/categories', async (_req, res) => {
 
 app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
   try {
-    await initActual();
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
 
     const {
       date,
@@ -176,7 +220,15 @@ app.post('/mcp/transactions/preview', express.json(), async (req, res) => {
 const processedRequests = new Set(); // in-memory, OK for now
 app.post('/mcp/transactions/add', async (req, res) => {
   try {
-    await initActual();
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
 
     if (!req.body) return res.status(400).json({ error: "Missing JSON body" });
 
@@ -278,7 +330,15 @@ app.post('/mcp/transactions/add', async (req, res) => {
 
 app.get('/mcp/summary/month', async (req, res) => {
   try {
-    await initActual();
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
     const { month } = req.query;
 
     if (!month) {
@@ -306,7 +366,9 @@ app.get('/mcp/status', (_req, res) => {
   res.json({
     initialized,
     budgetLoaded: initialized,
-    lastInit: lastInitTime
+    lastInit: lastInitTime,
+    // NEW: Include budget cache info
+    cachedBudgets: Array.from(initializedBudgets.keys())
   });
 });
 
@@ -359,7 +421,9 @@ app.get('/debug', async (_req, res) => {
 
     res.json({
       env,
-      dataDirStatus
+      dataDirStatus,
+      // NEW: Include budget cache info
+      cachedBudgets: Array.from(initializedBudgets.keys())
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -373,7 +437,16 @@ app.get('/debug', async (_req, res) => {
 app.get('/budget/:month', async (req, res) => {
   try {
     console.log('📅 Fetching budget for month:', req.params.month);
-    await initActual();
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
     const budget = await api.getBudgetMonth(req.params.month);
     res.json(budget);
   } catch (err) {
@@ -385,10 +458,19 @@ app.get('/budget/:month', async (req, res) => {
 /**
  * Accounts list
  */
-app.get('/accounts', async (_req, res) => {
+app.get('/accounts', async (req, res) => {
   try {
     console.log('💼 Fetching accounts');
-    await initActual();
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
     const accounts = await api.getAccounts();
     res.json(accounts);
   } catch (err) {
@@ -405,14 +487,22 @@ app.get('/transactions/recent', async (req, res) => {
   try {
     const since = req.query.since;
     console.log('💳 Fetching recent transactions' + (since ? ` since ${since}` : ''));
-    
-    await initActual();
-    
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
+
     // Get all transactions (API doesn't support date filtering directly)
     console.log('Fetching all transactions...');
     const txns = await api.getTransactions();
     console.log(`✅ Retrieved ${txns?.length || 0} total transactions`);
-    
+
     // Filter by date if 'since' parameter provided
     let filtered = txns || [];
     if (since) {
@@ -423,19 +513,19 @@ app.get('/transactions/recent', async (req, res) => {
       });
       console.log(`✅ Filtered to ${filtered.length} transactions since ${since}`);
     }
-    
+
     // Sort by date descending (newest first)
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
-    
+
     // Limit to 100 most recent
     const recent = filtered.slice(0, 100);
     console.log(`✅ Returning ${recent.length} most recent transactions`);
-    
+
     res.json(recent);
   } catch (err) {
     console.error('❌ Error fetching transactions:', err);
     console.error('Error stack:', err.stack);
-    res.status(500).json({ 
+    res.status(500).json({
       error: err.message,
       hint: 'Error retrieving transactions from Actual Budget API'
     });
