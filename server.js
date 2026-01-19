@@ -262,12 +262,15 @@ app.post('/mcp/transactions/add', async (req, res) => {
       }
     }
 
+    // Build transaction object
+    // payee: ONLY for transfers between accounts (exact account name)
+    // notes: For purchase descriptions (e.g., "coffee at oaks")
     const txn = {
       date: tx.date,
-      amount: Math.round(tx.amount * 100),
+      amount: Math.round(tx.amount * 100),  // Convert dollars to cents
       category: category?.id,
-      payee: tx.payee_name ?? tx.payee,
-      notes: tx.notes,
+      payee: tx.payee,           // For transfers ONLY (exact account name)
+      notes: tx.notes,            // Purchase description
       imported_id: requestId
     };
 
