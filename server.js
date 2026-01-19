@@ -339,6 +339,247 @@ app.post('/mcp/transactions/add', async (req, res) => {
 });
 
 
+// =============================================================================
+// Transaction Edit/Delete Endpoints
+// =============================================================================
+
+/**
+ * PUT /mcp/transactions/:id - Edit an existing transaction
+ */
+app.put('/mcp/transactions/:id', async (req, res) => {
+  try {
+    const transactionId = req.params.id;
+    const { amount, date, category, notes, cleared } = req.body;
+
+    console.log('✏️ Edit transaction request:', {
+      transactionId,
+      amount,
+      date,
+      category,
+      notes,
+      cleared
+    });
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
+
+    // Build the update object with only provided fields
+    const updates = {};
+
+    if (amount !== undefined) {
+      updates.amount = Math.round(amount * 100);  // Convert dollars to cents
+    }
+
+    if (date) {
+      updates.date = date;
+    }
+
+    if (notes !== undefined) {
+      updates.notes = notes;
+    }
+
+    if (cleared !== undefined) {
+      updates.cleared = cleared;
+    }
+
+    // Handle category lookup by name
+    if (category) {
+      const categories = await api.getCategories();
+      const categoryObj = categories.find(c => c.name === category || c.id === category);
+      if (categoryObj) {
+        updates.category = categoryObj.id;
+      } else {
+        return res.status(400).json({ error: `Category not found: ${category}` });
+      }
+    }
+
+    // Verify transaction exists by getting all transactions first
+    const allTxns = await api.getTransactions();
+    const existingTxn = allTxns.find(t => t.id === transactionId);
+
+    if (!existingTxn) {
+      return res.status(404).json({ error: `Transaction not found: ${transactionId}` });
+    }
+
+    console.log('📝 Updating transaction:', transactionId, 'with:', updates);
+
+    // Apply the update
+    await api.updateTransaction(transactionId, updates);
+
+    // Fetch the updated transaction
+    const updatedTxns = await api.getTransactions();
+    const updatedTxn = updatedTxns.find(t => t.id === transactionId);
+
+    // Get account and category names for response
+    const accounts = await api.getAccounts();
+    const categories = await api.getCategories();
+
+    const account = accounts.find(a => a.id === updatedTxn.account);
+    const categoryObj = updatedTxn.category ? categories.find(c => c.id === updatedTxn.category) : null;
+
+    console.log('✅ Transaction updated:', transactionId);
+
+    res.json({
+      ok: true,
+      transaction: {
+        id: updatedTxn.id,
+        account: account?.name || 'Unknown',
+        category: categoryObj?.name || null,
+        amount: updatedTxn.amount / 100,  // Convert back to dollars
+        date: updatedTxn.date,
+        payee: updatedTxn.payee,
+        notes: updatedTxn.notes,
+        cleared: updatedTxn.cleared
+      },
+      message: "✅ Transaction updated successfully"
+    });
+  } catch (err) {
+    console.error('❌ Error in /mcp/transactions/:id (PUT):', err);
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+      stack: err.stack
+    });
+  }
+});
+
+/**
+ * DELETE /mcp/transactions/:id - Delete a transaction
+ */
+app.delete('/mcp/transactions/:id', async (req, res) => {
+  try {
+    const transactionId = req.params.id;
+
+    console.log('🗑️ Delete transaction request:', transactionId);
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    await initActual(syncId, filePassword);
+
+    // Verify transaction exists before deleting
+    const allTxns = await api.getTransactions();
+    const existingTxn = allTxns.find(t => t.id === transactionId);
+
+    if (!existingTxn) {
+      return res.status(404).json({ error: `Transaction not found: ${transactionId}` });
+    }
+
+    // Get account name for response
+    const accounts = await api.getAccounts();
+    const account = accounts.find(a => a.id === existingTxn.account);
+
+    // Delete the transaction
+    await api.deleteTransaction(transactionId);
+
+    console.log('✅ Transaction deleted:', transactionId);
+
+    res.json({
+      ok: true,
+      deleted: {
+        id: transactionId,
+        account: account?.name || 'Unknown',
+        amount: existingTxn.amount / 100,
+        date: existingTxn.date
+      },
+      message: "✅ Transaction deleted successfully"
+    });
+  } catch (err) {
+    console.error('❌ Error in /mcp/transactions/:id (DELETE):', err);
+    res.status(500).json({
+      ok: false,
+      error: err.message,
+      stack: err.stack
+    });
+  }
+});
+
+/**
+ * GET /mcp/transactions/find - Find transactions by account and date range
+ */
+app.get('/mcp/transactions/find', async (req, res) => {
+  try {
+    const { account, start_date, end_date } = req.query;
+
+    console.log('🔍 Find transactions request:', { account, start_date, end_date });
+
+    // NEW: Read sync_id from header
+    const syncId = req.headers['x-actual-sync-id'];
+    const filePassword = req.headers['x-actual-file-password'];
+
+    if (!syncId) {
+      return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
+    }
+
+    if (!account) {
+      return res.status(400).json({ error: 'account parameter required' });
+    }
+
+    await initActual(syncId, filePassword);
+
+    // Find account by name
+    const accounts = await api.getAccounts();
+    const accountObj = accounts.find(a => a.name === account);
+
+    if (!accountObj) {
+      return res.status(400).json({ error: `Account not found: ${account}` });
+    }
+
+    // Default to last 30 days if no date range provided
+    const endDate = end_date || new Date().toISOString().split('T')[0];
+    const defaultStartDate = new Date();
+    defaultStartDate.setDate(defaultStartDate.getDate() - 30);
+    const startDate = start_date || defaultStartDate.toISOString().split('T')[0];
+
+    console.log(`🔍 Fetching transactions for account ${accountObj.id} from ${startDate} to ${endDate}`);
+
+    // Get transactions for the account and date range
+    const txns = await api.getTransactions(accountObj.id, startDate, endDate);
+
+    console.log(`✅ Found ${txns?.length || 0} transactions`);
+
+    // Get categories for names
+    const categories = await api.getCategories();
+
+    const result = txns.map(t => {
+      const categoryObj = t.category ? categories.find(c => c.id === t.category) : null;
+      return {
+        id: t.id,
+        account: accountObj.name,
+        amount: t.amount / 100,  // Convert cents to dollars
+        date: t.date,
+        payee: t.payee,
+        notes: t.notes,
+        category: categoryObj?.name || null,
+        cleared: t.cleared
+      };
+    });
+
+    // Sort by date descending (newest first)
+    result.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    res.json(result);
+  } catch (err) {
+    console.error('❌ Error in /mcp/transactions/find:', err);
+    res.status(500).json({
+      error: err.message,
+      stack: err.stack
+    });
+  }
+});
+
 
 app.get('/mcp/summary/month', async (req, res) => {
   try {
