@@ -68,15 +68,24 @@ async function initActual(syncId = null, filePassword = null) {
 }
 
 
-//utilize API key
-// app.use('/mcp', (req, res, next) => {
-//   if (!process.env.BRIDGE_API_KEY) return next();
+// API Key authentication for /mcp routes
+app.use('/mcp', (req, res, next) => {
+  const apiKey = process.env.BRIDGE_API_KEY;
 
-//   if (req.headers['x-api-key'] !== process.env.BRIDGE_API_KEY) {
-//     return res.status(401).json({ error: 'Unauthorized' });
-//   }
-//   next();
-// });
+  // If no API key is configured, allow all requests (dev mode)
+  if (!apiKey) {
+    console.warn('⚠️  BRIDGE_API_KEY not set - allowing unauthenticated requests');
+    return next();
+  }
+
+  const requestKey = req.headers['x-api-key'];
+  if (requestKey !== apiKey) {
+    console.warn(`🚫 Unauthorized request attempt from ${req.ip}`);
+    return res.status(401).json({ error: 'Unauthorized - Invalid API key' });
+  }
+
+  next();
+});
 
 
 app.get('/mcp/capabilities', (_req, res) => {
