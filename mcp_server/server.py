@@ -84,30 +84,41 @@ async def add_transaction(
     account: str,
     amount: float,
     date: str,
+    notes: str = None,
     payee: str = None,
-    category: str = None,
-    notes: str = None
+    category: str = None
 ) -> dict:
     """Add a new transaction to Actual Budget.
 
+    DEPENDENCIES: Call list_accounts() first to get exact account names.
+                  Call list_categories() first if you want to categorize.
+
+    IMPORTANT:
+    - For purchases: use 'notes' field (e.g., "coffee at oaks")
+    - For transfers: use 'payee' field with EXACT account name (e.g., "Capital One Savings")
+
     Args:
-        account: Account name (e.g., 'Checking') or ID
-        amount: Transaction amount in decimal format (negative for expense, positive for income)
-                 Example: -50.00 for $50 expense, 1000.00 for $1000 income
+        account: Account name - MUST match exactly. Example: "Capital One Checking"
+        amount: Decimal amount e.g. -8.50 for expense, 100.00 for income
         date: Transaction date in 'YYYY-MM-DD' format
-        payee: Payee name or description (optional)
-        category: Category name (e.g., 'Groceries') or ID (optional)
-        notes: Additional notes or memo (optional)
+        notes: Purchase description (e.g., "coffee at oaks", "weekly groceries")
+        payee: For transfers ONLY - exact account name (e.g., "Capital One Savings")
+        category: Category name for categorization (e.g., "Food", "Transport")
 
     Returns:
         Confirmation with transaction details including generated ID
 
-    Example:
-        add_transaction(account='Checking', amount=-50.00, date='2026-01-14',
-                       payee='Whole Foods', category='Groceries')
+    Examples:
+        # Purchase coffee
+        add_transaction(account='Capital One Checking', amount=-8.50,
+                       date='2025-01-19', notes='coffee at oaks')
+
+        # Transfer to savings
+        add_transaction(account='Capital One Checking', amount=-100.00,
+                       date='2025-01-19', payee='Capital One Savings')
     """
     async with ActualBridgeClient() as client:
-        result = await client.add_transaction(account, amount, date, payee, category, notes)
+        result = await client.add_transaction(account, amount, date, notes, payee, category)
         logger.info(f"Added transaction: {result.get('transaction', {})}")
         return result
 

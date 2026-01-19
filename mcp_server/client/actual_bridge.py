@@ -71,8 +71,8 @@ class ActualBridgeClient:
         response.raise_for_status()
         return response.json()
 
-    async def add_transaction(self, account, amount, date, payee=None, category=None, notes=None):
-        """POST /mcp/transactions/add - Accepts account/category NAMES (user-friendly)
+    async def add_transaction(self, account, amount, date, notes=None, payee=None, category=None):
+        """POST /mcp/transactions/add - Add a transaction
 
         Note: actual-bridge handles name-to-ID lookup internally!
         """
@@ -81,15 +81,15 @@ class ActualBridgeClient:
 
         payload = {
             "account": account,  # Can be NAME or ID - bridge handles lookup
-            "amount": amount,    # Decimal (e.g., -50.00) - bridge converts to cents
+            "amount": amount,    # Decimal (e.g., -8.50) - bridge converts to cents
             "date": date,        # YYYY-MM-DD format
         }
-        if payee:
-            payload["payee"] = payee
-        if category:
-            payload["category"] = category  # Can be NAME or ID
         if notes:
-            payload["notes"] = notes
+            payload["notes"] = notes           # Purchase description
+        if payee:
+            payload["payee"] = payee           # For transfers ONLY (exact account name)
+        if category:
+            payload["category"] = category     # Can be NAME or ID
 
         response = await self._client.post(
             f"{self.base_url}/mcp/transactions/add",
