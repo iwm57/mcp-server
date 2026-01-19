@@ -767,11 +767,18 @@ app.get('/transactions/recent', async (req, res) => {
       console.log(`✅ Filtered to ${filtered.length} transactions since ${since}`);
     }
 
+    // Get accounts for mapping account IDs to names
+    const accounts = await api.getAccounts();
+    const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+
     // Sort by date descending (newest first)
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Limit to 100 most recent
-    const recent = filtered.slice(0, 100);
+    // Limit to 100 most recent and add account_name
+    const recent = filtered.slice(0, 100).map(t => ({
+      ...t,
+      account_name: accountMap.get(t.account) || 'Unknown'
+    }));
     console.log(`✅ Returning ${recent.length} most recent transactions`);
 
     res.json(recent);
