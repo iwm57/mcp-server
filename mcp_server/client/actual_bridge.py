@@ -16,11 +16,16 @@ class ActualBridgeClient:
         ).rstrip('/')
         self.sync_id = os.getenv("ACTUAL_SYNC_ID", None)
         self.file_password = os.getenv("ACTUAL_FILE_PASSWORD", None)
+        self.bridge_api_key = os.getenv("BRIDGE_API_KEY", None)
         self.timeout = 30
         self._client: httpx.AsyncClient = None
 
     async def __aenter__(self):
         headers = {}
+
+        # Add API key for actual-bridge authentication
+        if self.bridge_api_key:
+            headers["x-api-key"] = self.bridge_api_key
 
         # Add sync_id header if provided
         if self.sync_id:
