@@ -145,6 +145,114 @@ async def get_recent_transactions(since_date: str = None) -> list[dict]:
 
 
 # =============================================================================
+# Tool: Edit Transaction
+# =============================================================================
+
+@mcp.tool()
+async def edit_transaction(
+    transaction_id: str,
+    amount: float = None,
+    date: str = None,
+    category: str = None,
+    notes: str = None,
+    cleared: bool = None
+) -> dict:
+    """Edit an existing transaction in Actual Budget.
+
+    All parameters except transaction_id are optional - only specify what you want to change.
+
+    Args:
+        transaction_id: The UUID of the transaction to edit (get from recent transactions)
+        amount: New decimal amount e.g. -8.50 for expense, 100.00 for income
+        date: New transaction date in 'YYYY-MM-DD' format
+        category: New category name (e.g., "Food", "Transport")
+        notes: New description (e.g., "coffee at oaks", "weekly groceries")
+        cleared: Whether transaction has cleared (true/false)
+
+    Returns:
+        Updated transaction details
+
+    Examples:
+        # Change amount
+        edit_transaction(transaction_id='abc123', amount=-15.00)
+
+        # Change category and notes
+        edit_transaction(transaction_id='abc123', category='Food',
+                       notes='lunch at cafe')
+
+        # Clear a transaction
+        edit_transaction(transaction_id='abc123', cleared=True)
+    """
+    async with ActualBridgeClient() as client:
+        result = await client.edit_transaction(transaction_id, amount, date,
+                                               category, notes, cleared)
+        logger.info(f"Edited transaction {transaction_id}")
+        return result
+
+
+# =============================================================================
+# Tool: Delete Transaction
+# =============================================================================
+
+@mcp.tool()
+async def delete_transaction(transaction_id: str) -> dict:
+    """Delete a transaction from Actual Budget.
+
+    WARNING: This action cannot be undone!
+
+    Args:
+        transaction_id: The UUID of the transaction to delete (get from recent transactions)
+
+    Returns:
+        Confirmation of deletion
+
+    Examples:
+        delete_transaction(transaction_id='abc123')
+    """
+    async with ActualBridgeClient() as client:
+        result = await client.delete_transaction(transaction_id)
+        logger.info(f"Deleted transaction {transaction_id}")
+        return result
+
+
+# =============================================================================
+# Tool: Find Transactions
+# =============================================================================
+
+@mcp.tool()
+async def find_transactions(
+    account: str,
+    start_date: str = None,
+    end_date: str = None
+) -> list[dict]:
+    """Find transactions by account and date range.
+
+    Use this to locate a specific transaction by ID when you need to edit or delete it.
+
+    Args:
+        account: Account name - MUST match exactly. Example: "Capital One Checking"
+        start_date: Start date in 'YYYY-MM-DD' format (default: 30 days ago)
+        end_date: End date in 'YYYY-MM-DD' format (default: today)
+
+    Returns:
+        List of transactions with id, date, amount, payee, notes, category
+
+    Examples:
+        # Find all transactions in an account
+        find_transactions(account='Capital One Checking')
+
+        # Find transactions for a specific month
+        find_transactions(account='Capital One Checking',
+                        start_date='2025-01-01',
+                        end_date='2025-01-31')
+    """
+    async with ActualBridgeClient() as client:
+        result = await client.find_transactions(account, start_date, end_date)
+        logger.info(f"Found {len(result)} transactions for account {account}")
+        return result
+
+
+# =============================================================================
 # Main Entry Point
 # =============================================================================
 
@@ -158,6 +266,9 @@ def main():
     logger.info("  - get_monthly_summary")
     logger.info("  - add_transaction")
     logger.info("  - get_recent_transactions")
+    logger.info("  - edit_transaction")
+    logger.info("  - delete_transaction")
+    logger.info("  - find_transactions")
 
     # Run the server using STDIO transport
     # This will read JSON-RPC messages from stdin and write to stdout

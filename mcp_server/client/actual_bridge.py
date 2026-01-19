@@ -115,3 +115,87 @@ class ActualBridgeClient:
         )
         response.raise_for_status()
         return response.json()
+
+    async def edit_transaction(self, transaction_id: str, amount: float = None,
+                              date: str = None, category: str = None,
+                              notes: str = None, cleared: bool = None):
+        """PUT /mcp/transactions/:id - Edit an existing transaction
+
+        Args:
+            transaction_id: The UUID of the transaction to edit
+            amount: New amount in decimal format (e.g., -10.50)
+            date: New date in YYYY-MM-DD format
+            category: New category name
+            notes: New notes/description
+            cleared: Whether transaction is cleared
+
+        Returns:
+            Updated transaction object
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        payload = {}
+        if amount is not None:
+            payload["amount"] = amount
+        if date:
+            payload["date"] = date
+        if category:
+            payload["category"] = category
+        if notes is not None:
+            payload["notes"] = notes
+        if cleared is not None:
+            payload["cleared"] = cleared
+
+        response = await self._client.put(
+            f"{self.base_url}/mcp/transactions/{transaction_id}",
+            json=payload
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def delete_transaction(self, transaction_id: str):
+        """DELETE /mcp/transactions/:id - Delete a transaction
+
+        Args:
+            transaction_id: The UUID of the transaction to delete
+
+        Returns:
+            Confirmation of deletion
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        response = await self._client.delete(
+            f"{self.base_url}/mcp/transactions/{transaction_id}"
+        )
+        response.raise_for_status()
+        return response.json()
+
+    async def find_transactions(self, account: str, start_date: str = None,
+                               end_date: str = None):
+        """GET /mcp/transactions/find - Find transactions by account and date range
+
+        Args:
+            account: Account name
+            start_date: Start date in YYYY-MM-DD format (default: 30 days ago)
+            end_date: End date in YYYY-MM-DD format (default: today)
+
+        Returns:
+            List of transactions matching criteria
+        """
+        if not self._client:
+            raise RuntimeError("Client not initialized. Use async context manager.")
+
+        params = {"account": account}
+        if start_date:
+            params["start_date"] = start_date
+        if end_date:
+            params["end_date"] = end_date
+
+        response = await self._client.get(
+            f"{self.base_url}/mcp/transactions/find",
+            params=params
+        )
+        response.raise_for_status()
+        return response.json()
