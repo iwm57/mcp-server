@@ -774,10 +774,11 @@ app.get('/transactions/recent', async (req, res) => {
     // Sort by date descending (newest first)
     filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
 
-    // Limit to 100 most recent and add account_name
+    // Limit to 100 most recent, add account_name, and convert cents to dollars
     const recent = filtered.slice(0, 100).map(t => ({
       ...t,
-      account_name: accountMap.get(t.account) || 'Unknown'
+      account_name: accountMap.get(t.account) || 'Unknown',
+      amount: t.amount / 100  // Convert cents to dollars for consistent API
     }));
     console.log(`✅ Returning ${recent.length} most recent transactions`);
 
