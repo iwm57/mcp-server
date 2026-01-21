@@ -413,9 +413,17 @@ app.put('/mcp/transactions/:id', async (req, res) => {
     // Apply the update
     await api.updateTransaction(transactionId, updates);
 
-    // Fetch the updated transaction
-    const updatedTxns = await api.getTransactions();
-    const updatedTxn = updatedTxns.find(t => t.id === transactionId);
+    // Fetch the updated transaction directly (avoids stale cache from getTransactions)
+    let updatedTxn;
+    try {
+      // Try direct fetch first (more reliable after update)
+      updatedTxn = await api.getTransaction(transactionId);
+    } catch (e) {
+      // Fallback to fetching all transactions if direct fetch fails
+      console.log('⚠️ Direct fetch failed, falling back to getTransactions:', e.message);
+      const updatedTxns = await api.getTransactions();
+      updatedTxn = updatedTxns.find(t => t.id === transactionId);
+    }
 
     // Get account and category names for response
     const accounts = await api.getAccounts();
