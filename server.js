@@ -413,32 +413,34 @@ app.put('/mcp/transactions/:id', async (req, res) => {
     // Apply the update
     await api.updateTransaction(transactionId, updates);
 
-    // Fetch updated transaction - use getTransactions() to avoid stale cache
-    // api.getTransaction() has internal caching that returns stale data immediately after update
-    const updatedTxns = await api.getTransactions();
-    const updatedTxn = updatedTxns.find(t => t.id === transactionId);
+    // Build response from existing transaction + updates (avoids stale cache issues)
+    // We don't fetch back because @actual-app/api has internal caching delays
+    const result = {
+      id: transactionId,
+      amount: updates.amount !== undefined ? updates.amount / 100 : existingTxn.amount / 100,
+      date: updates.date || existingTxn.date,
+      notes: updates.notes !== undefined ? updates.notes : existingTxn.notes,
+      cleared: updates.cleared !== undefined ? updates.cleared : existingTxn.cleared,
+      payee: existingTxn.payee,
+    };
 
     // Get account and category names for response
     const accounts = await api.getAccounts();
     const categories = await api.getCategories();
 
-    const account = accounts.find(a => a.id === updatedTxn.account);
-    const categoryObj = updatedTxn.category ? categories.find(c => c.id === updatedTxn.category) : null;
+    const account = accounts.find(a => a.id === existingTxn.account);
+    result.account = account?.name || 'Unknown';
+
+    // Get category name (use updated category or existing)
+    const categoryId = updates.category || existingTxn.category;
+    const categoryObj = categoryId ? categories.find(c => c.id === categoryId) : null;
+    result.category = categoryObj?.name || null;
 
     console.log('✅ Transaction updated:', transactionId);
 
     res.json({
       ok: true,
-      transaction: {
-        id: updatedTxn.id,
-        account: account?.name || 'Unknown',
-        category: categoryObj?.name || null,
-        amount: updatedTxn.amount / 100,  // Convert back to dollars
-        date: updatedTxn.date,
-        payee: updatedTxn.payee,
-        notes: updatedTxn.notes,
-        cleared: updatedTxn.cleared
-      },
+      transaction: result,
       message: "✅ Transaction updated successfully"
     });
   } catch (err) {
