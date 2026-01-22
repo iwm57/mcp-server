@@ -13,36 +13,37 @@ const port = process.env.PORT || 3000;
 let lastInitTime = null;
 let initialized = false;
 
-// NEW: Track initialized budgets by sync_id
-const initializedBudgets = new Map(); // sync_id -> {api, initialized, filePassword}
+// Track the currently loaded sync_id to avoid unnecessary re-downloads
+let currentSyncId = null;
 
 async function initActual(syncId = null, filePassword = null) {
   // Use sync_id from parameter, or environment variable if not provided
   const effectiveSyncId = syncId || process.env.ACTUAL_SYNC_ID;
 
-  // Check if this budget is already initialized
-  if (effectiveSyncId && initializedBudgets.has(effectiveSyncId)) {
-    console.log(`✅ Using cached initialization for sync_id: ${effectiveSyncId}`);
-    return initializedBudgets.get(effectiveSyncId);
-  }
-
-  // If no sync_id provided and already initialized globally, use that
-  if (!effectiveSyncId && initialized) {
-    console.log('✅ Using global initialization');
+  // If same sync_id is already loaded, skip re-initialization
+  if (effectiveSyncId && effectiveSyncId === currentSyncId) {
+    console.log(`✅ Budget already loaded: ${effectiveSyncId}`);
     return api;
   }
 
+  // Different sync_id or first load - need to download
   console.log(`🔹 Initializing Actual API for sync_id: ${effectiveSyncId}`);
   console.log('Data directory:', process.env.DATA_DIR);
   console.log('Server URL:', process.env.ACTUAL_SERVER_URL);
 
   try {
-    await api.init({
-      dataDir: process.env.DATA_DIR,
-      serverURL: process.env.ACTUAL_SERVER_URL,
-      password: process.env.ACTUAL_SERVER_PASSWORD,
-    });
+    // Only init the connection once (it's global)
+    if (!initialized) {
+      await api.init({
+        dataDir: process.env.DATA_DIR,
+        serverURL: process.env.ACTUAL_SERVER_URL,
+        password: process.env.ACTUAL_SERVER_PASSWORD,
+      });
+      initialized = true;
+      lastInitTime = new Date().toISOString();
+    }
 
+    // Always download the budget when sync_id changes
     await api.downloadBudget(
       effectiveSyncId,
       filePassword || process.env.ACTUAL_BUDGET_PASSWORD
@@ -50,14 +51,8 @@ async function initActual(syncId = null, filePassword = null) {
         : undefined
     );
 
-    // Cache this initialization
-    if (effectiveSyncId) {
-      initializedBudgets.set(effectiveSyncId, { api, initialized: true, filePassword });
-    } else {
-      initialized = true;
-    }
-
-    lastInitTime = new Date().toISOString();
+    // Update current sync_id tracker
+    currentSyncId = effectiveSyncId;
 
     console.log(`✅ Actual API initialized for sync_id: ${effectiveSyncId}`);
     return api;
