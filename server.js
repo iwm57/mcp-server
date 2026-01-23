@@ -505,15 +505,50 @@ app.delete('/mcp/transactions/:id', async (req, res) => {
 });
 
 /**
- * GET /mcp/transactions/find - Find transactions by account and date range
+ * POST /mcp/transactions/query - Query transactions with flexible filters
+ *
+ * Uses ActualQL runQuery for powerful filtering:
+ * - Filter by account(s), category, date range, amount range, search text
+ * - Multiple accounts supported
+ * - All parameters optional
+ *
+ * Body:
+ * {
+ *   accounts: string | string[],  // Account name(s) - default: all accounts
+ *   category: string,             // Category name - optional
+ *   start_date: string,           // YYYY-MM-DD - optional
+ *   end_date: string,             // YYYY-MM-DD - optional
+ *   min_amount: number,           // Minimum amount in dollars - optional
+ *   max_amount: number,           // Maximum amount in dollars - optional
+ *   search: string,               // Search in notes/payee - optional
+ *   limit: number                 // Max results - default: 100
+ * }
  */
-app.get('/mcp/transactions/find', async (req, res) => {
+app.post('/mcp/transactions/query', async (req, res) => {
   try {
-    const { account, start_date, end_date } = req.query;
+    const {
+      accounts,
+      category,
+      start_date,
+      end_date,
+      min_amount,
+      max_amount,
+      search,
+      limit = 100
+    } = req.body;
 
-    console.log('🔍 Find transactions request:', { account, start_date, end_date });
+    console.log('🔍 Query transactions request:', {
+      accounts,
+      category,
+      start_date,
+      end_date,
+      min_amount,
+      max_amount,
+      search,
+      limit
+    });
 
-    // NEW: Read sync_id from header
+    // Read sync_id from header
     const syncId = req.headers['x-actual-sync-id'];
     const filePassword = req.headers['x-actual-file-password'];
 
@@ -521,56 +556,120 @@ app.get('/mcp/transactions/find', async (req, res) => {
       return res.status(400).json({ error: 'Missing x-actual-sync-id header' });
     }
 
-    if (!account) {
-      return res.status(400).json({ error: 'account parameter required' });
-    }
-
     await initActual(syncId, filePassword);
 
-    // Find account by name
-    const accounts = await api.getAccounts();
-    const accountObj = accounts.find(a => a.name === account);
+    // Get accounts and categories for ID lookup
+    const allAccounts = await api.getAccounts();
+    const allCategories = await api.getCategories();
 
-    if (!accountObj) {
-      return res.status(400).json({ error: `Account not found: ${account}` });
+    // Build filter conditions for ActualQL
+    const conditions = [];
+
+    // Account filter - resolve names to IDs
+    if (accounts) {
+      const accountList = Array.isArray(accounts) ? accounts : [accounts];
+      const accountIds = accountList
+        .map(name => allAccounts.find(a => a.name === name))
+        .filter(a => a)
+        .map(a => `'${a.id}'`);
+
+      if (accountIds.length > 0) {
+        conditions.push(`transaction.account IN (${accountIds.join(', ')})`);
+      }
     }
 
-    // Default to last 30 days if no date range provided
-    const endDate = end_date || new Date().toISOString().split('T')[0];
-    const defaultStartDate = new Date();
-    defaultStartDate.setDate(defaultStartDate.getDate() - 30);
-    const startDate = start_date || defaultStartDate.toISOString().split('T')[0];
+    // Category filter - resolve name to ID
+    if (category) {
+      const categoryObj = allCategories.find(c => c.name === category);
+      if (categoryObj) {
+        conditions.push(`transaction.category = '${categoryObj.id}'`);
+      } else {
+        // Category not found - return empty results
+        console.log(`⚠️ Category not found: ${category}`);
+        return res.json([]);
+      }
+    }
 
-    console.log(`🔍 Fetching transactions for account ${accountObj.id} from ${startDate} to ${endDate}`);
+    // Date range filter
+    if (start_date) {
+      conditions.push(`transaction.date >= '${start_date}'`);
+    }
+    if (end_date) {
+      conditions.push(`transaction.date <= '${end_date}'`);
+    }
 
-    // Get transactions for the account and date range
-    const txns = await api.getTransactions(accountObj.id, startDate, endDate);
+    // Amount range filter (convert dollars to cents)
+    if (min_amount !== undefined) {
+      conditions.push(`transaction.amount >= ${Math.round(min_amount * 100)}`);
+    }
+    if (max_amount !== undefined) {
+      conditions.push(`transaction.amount <= ${Math.round(max_amount * 100)}`);
+    }
 
-    console.log(`✅ Found ${txns?.length || 0} transactions`);
+    // Search in notes/payee/imported_payee
+    if (search) {
+      const searchTerm = search.replace(/'/g, "''"); // Escape quotes
+      conditions.push(`(
+        transaction.notes LIKE '%${searchTerm}%' OR
+        transaction.payee_name LIKE '%${searchTerm}%' OR
+        transaction.imported_payee LIKE '%${searchTerm}%'
+      )`);
+    }
 
-    // Get categories for names
-    const categories = await api.getCategories();
-
-    const result = txns.map(t => {
-      const categoryObj = t.category ? categories.find(c => c.id === t.category) : null;
-      return {
+    // Build the ActualQL query
+    let query = `
+      SELECT {
         id: t.id,
-        account: accountObj.name,
-        amount: t.amount / 100,  // Convert cents to dollars
+        account: t.account,
+        amount: t.amount,
         date: t.date,
         payee: t.payee,
+        payee_name: t.payee_name,
+        imported_payee: t.imported_payee,
         notes: t.notes,
-        category: categoryObj?.name || null,
+        category: t.category,
+        cleared: t.cleared
+      }
+      FROM transactions t
+    `;
+
+    if (conditions.length > 0) {
+      query += ` WHERE ${conditions.join(' AND ')}`;
+    }
+
+    // Add sorting and limit
+    query += ` ORDER BY t.date DESC LIMIT ${limit}`;
+
+    console.log(`🔍 Running ActualQL query: ${query.replace(/\n/g, ' ').trim()}`);
+
+    // Execute the query
+    const result = await api.runQuery({ query });
+
+    console.log(`✅ Found ${result?.length || 0} transactions`);
+
+    // Format results with account and category names
+    const accountMap = new Map(allAccounts.map(a => [a.id, a.name]));
+    const categoryMap = new Map(allCategories.map(c => [c.id, c.name]));
+
+    const formatted = result.map(t => {
+      // Get payee display name (prefer payee_name over imported_payee)
+      const payeeDisplay = t.payee_name || t.imported_payee || null;
+
+      return {
+        id: t.id,
+        account: accountMap.get(t.account) || 'Unknown',
+        amount: t.amount / 100,  // Convert cents to dollars
+        date: t.date,
+        payee: payeeDisplay,
+        notes: t.notes,
+        category: t.category ? categoryMap.get(t.category) || null : null,
         cleared: t.cleared
       };
     });
 
-    // Sort by date descending (newest first)
-    result.sort((a, b) => new Date(b.date) - new Date(a.date));
-
-    res.json(result);
+    res.json(formatted);
   } catch (err) {
-    console.error('❌ Error in /mcp/transactions/find:', err);
+    console.error('❌ Error in /mcp/transactions/query:', err);
     res.status(500).json({
       error: err.message,
       stack: err.stack
