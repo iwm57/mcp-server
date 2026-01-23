@@ -507,7 +507,7 @@ app.delete('/mcp/transactions/:id', async (req, res) => {
 /**
  * POST /mcp/transactions/query - Query transactions with flexible filters
  *
- * Uses ActualQL runQuery for powerful filtering:
+ * Uses getTransactions() and filters in JavaScript (runQuery not available in this API version).
  * - Filter by account(s), category, date range, amount range, search text
  * - Multiple accounts supported
  * - All parameters optional
@@ -558,100 +558,81 @@ app.post('/mcp/transactions/query', async (req, res) => {
 
     await initActual(syncId, filePassword);
 
-    // Get accounts and categories for ID lookup
+    // Get all transactions (we'll filter in JavaScript)
+    const txns = await api.getTransactions();
+    console.log(`🔍 Retrieved ${txns?.length || 0} total transactions`);
+
+    // Get accounts and categories for name lookup and filtering
     const allAccounts = await api.getAccounts();
     const allCategories = await api.getCategories();
 
-    // Build filter conditions for ActualQL
-    const conditions = [];
-
-    // Account filter - resolve names to IDs
-    if (accounts) {
-      const accountList = Array.isArray(accounts) ? accounts : [accounts];
-      const accountIds = accountList
-        .map(name => allAccounts.find(a => a.name === name))
-        .filter(a => a)
-        .map(a => `'${a.id}'`);
-
-      if (accountIds.length > 0) {
-        conditions.push(`transaction.account IN (${accountIds.join(', ')})`);
-      }
-    }
-
-    // Category filter - resolve name to ID
-    if (category) {
-      const categoryObj = allCategories.find(c => c.name === category);
-      if (categoryObj) {
-        conditions.push(`transaction.category = '${categoryObj.id}'`);
-      } else {
-        // Category not found - return empty results
-        console.log(`⚠️ Category not found: ${category}`);
-        return res.json([]);
-      }
-    }
-
-    // Date range filter
-    if (start_date) {
-      conditions.push(`transaction.date >= '${start_date}'`);
-    }
-    if (end_date) {
-      conditions.push(`transaction.date <= '${end_date}'`);
-    }
-
-    // Amount range filter (convert dollars to cents)
-    if (min_amount !== undefined) {
-      conditions.push(`transaction.amount >= ${Math.round(min_amount * 100)}`);
-    }
-    if (max_amount !== undefined) {
-      conditions.push(`transaction.amount <= ${Math.round(max_amount * 100)}`);
-    }
-
-    // Search in notes/payee/imported_payee
-    if (search) {
-      const searchTerm = search.replace(/'/g, "''"); // Escape quotes
-      conditions.push(`(
-        transaction.notes LIKE '%${searchTerm}%' OR
-        transaction.payee_name LIKE '%${searchTerm}%' OR
-        transaction.imported_payee LIKE '%${searchTerm}%'
-      )`);
-    }
-
-    // Build the ActualQL query
-    let query = `
-      SELECT {
-        id: t.id,
-        account: t.account,
-        amount: t.amount,
-        date: t.date,
-        payee: t.payee,
-        payee_name: t.payee_name,
-        imported_payee: t.imported_payee,
-        notes: t.notes,
-        category: t.category,
-        cleared: t.cleared
-      }
-      FROM transactions t
-    `;
-
-    if (conditions.length > 0) {
-      query += ` WHERE ${conditions.join(' AND ')}`;
-    }
-
-    // Add sorting and limit
-    query += ` ORDER BY t.date DESC LIMIT ${limit}`;
-
-    console.log(`🔍 Running ActualQL query: ${query.replace(/\n/g, ' ').trim()}`);
-
-    // Execute the query (runQuery takes the query string directly)
-    const result = await api.runQuery(query);
-
-    console.log(`✅ Found ${result?.length || 0} transactions`);
-
-    // Format results with account and category names
     const accountMap = new Map(allAccounts.map(a => [a.id, a.name]));
     const categoryMap = new Map(allCategories.map(c => [c.id, c.name]));
 
-    const formatted = result.map(t => {
+    // Filter transactions
+    const filtered = txns.filter(t => {
+      // Account filter
+      if (accounts) {
+        const accountList = Array.isArray(accounts) ? accounts : [accounts];
+        const accountIds = accountList
+          .map(name => allAccounts.find(a => a.name === name))
+          .filter(a => a)
+          .map(a => a.id);
+        if (accountIds.length > 0 && !accountIds.includes(t.account)) {
+          return false;
+        }
+      }
+
+      // Category filter
+      if (category) {
+        const categoryObj = allCategories.find(c => c.name === category);
+        if (!categoryObj || t.category !== categoryObj.id) {
+          return false;
+        }
+      }
+
+      // Date range filter
+      if (start_date && t.date < start_date) {
+        return false;
+      }
+      if (end_date && t.date > end_date) {
+        return false;
+      }
+
+      // Amount range filter
+      if (min_amount !== undefined && t.amount < Math.round(min_amount * 100)) {
+        return false;
+      }
+      if (max_amount !== undefined && t.amount > Math.round(max_amount * 100)) {
+        return false;
+      }
+
+      // Search filter (notes, payee_name, imported_payee)
+      if (search) {
+        const searchLower = search.toLowerCase();
+        const notes = (t.notes || '').toLowerCase();
+        const payeeName = (t.payee_name || '').toLowerCase();
+        const importedPayee = (t.imported_payee || '').toLowerCase();
+        if (!notes.includes(searchLower) &&
+            !payeeName.includes(searchLower) &&
+            !importedPayee.includes(searchLower)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Sort by date descending (newest first)
+    filtered.sort((a, b) => new Date(b.date) - new Date(a.date));
+
+    // Apply limit
+    const limited = filtered.slice(0, limit);
+
+    console.log(`✅ Found ${limited.length} transactions after filtering`);
+
+    // Format results
+    const formatted = limited.map(t => {
       // Get payee display name (prefer payee_name over imported_payee)
       const payeeDisplay = t.payee_name || t.imported_payee || null;
 
