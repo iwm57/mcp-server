@@ -8,12 +8,15 @@ This MCP server communicates with [actual-bridge](https://github.com/iwm57/actua
 
 ## Features
 
-Exposes 5 MCP tools:
+Exposes 8 MCP tools:
 - `list_accounts` - List all accounts with balances
 - `list_categories` - List all budget categories
 - `get_monthly_summary` - Get monthly budget overview
 - `add_transaction` - Add new transactions (accepts account/category **names**, not IDs)
+- `edit_transaction` - Edit existing transaction
+- `delete_transaction` - Delete a transaction
 - `get_recent_transactions` - Get recent transaction history
+- `query_transactions` - Flexible transaction search with multiple filters
 
 ## Installation
 
@@ -159,6 +162,78 @@ Returns:
 ]
 ```
 
+#### 6. edit_transaction
+```python
+await call_tool("edit_transaction", {
+  "transaction_id": "txn-id",
+  "account": "Checking",     # Optional: update account
+  "amount": -75.00,          # Optional: update amount
+  "date": "2026-01-15",      # Optional: update date
+  "payee": "Updated Store",  # Optional: update payee
+  "category": "Dining Out"   # Optional: update category
+})
+```
+
+Returns:
+```json
+{
+  "ok": true,
+  "transaction": {
+    "id": "txn-id",
+    "account": "Checking",
+    "category": "Dining Out",
+    "amount": -75.00,
+    "date": "2026-01-15",
+    "payee": "Updated Store"
+  },
+  "message": "✅ Transaction updated successfully"
+}
+```
+
+#### 7. delete_transaction
+```python
+await call_tool("delete_transaction", {
+  "transaction_id": "txn-id"
+})
+```
+
+Returns:
+```json
+{
+  "ok": true,
+  "message": "✅ Transaction deleted successfully"
+}
+```
+
+#### 8. query_transactions
+Flexible transaction search with multiple filters:
+```python
+await call_tool("query_transactions", {
+  "accounts": ["Checking", "Credit Card"],  # Optional: filter by accounts
+  "category": "Groceries",                  # Optional: filter by category
+  "start_date": "2026-01-01",               # Optional: date range start
+  "end_date": "2026-01-31",                 # Optional: date range end
+  "min_amount": -100,                       # Optional: minimum amount (negative for expenses)
+  "max_amount": -10,                        # Optional: maximum amount
+  "search": "coffee",                       # Optional: text search in payee/notes
+  "limit": 50                               # Optional: max results (default: 100)
+})
+```
+
+Returns:
+```json
+[
+  {
+    "id": "txn-id",
+    "date": "2026-01-14",
+    "amount": -25.00,
+    "payee": "Coffee Shop",
+    "account": "Checking",
+    "category": "Food & Drink"
+  }
+]
+```
+
 ## Architecture
 
 ```
@@ -197,7 +272,7 @@ Actual Budget Data
 mcp-server/
 ├── mcp_server/
 │   ├── __init__.py
-│   ├── server.py              # Main MCP server with 5 tools
+│   ├── server.py              # Main MCP server with 8 tools
 │   └── client/
 │       ├── __init__.py
 │       └── actual_bridge.py    # HTTP client to actual-bridge
