@@ -172,14 +172,28 @@ class ActualBridgeClient:
         response.raise_for_status()
         return response.json()
 
-    async def find_transactions(self, account: str, start_date: str = None,
-                               end_date: str = None):
-        """GET /mcp/transactions/find - Find transactions by account and date range
+    async def query_transactions(
+        self,
+        accounts: str | list[str] = None,
+        category: str = None,
+        start_date: str = None,
+        end_date: str = None,
+        min_amount: float = None,
+        max_amount: float = None,
+        search: str = None,
+        limit: int = 100
+    ):
+        """POST /mcp/transactions/query - Query transactions with flexible filters
 
         Args:
-            account: Account name
-            start_date: Start date in YYYY-MM-DD format (default: 30 days ago)
-            end_date: End date in YYYY-MM-DD format (default: today)
+            accounts: Account name(s) - single string or list of strings (default: all accounts)
+            category: Category name to filter by
+            start_date: Start date in YYYY-MM-DD format
+            end_date: End date in YYYY-MM-DD format
+            min_amount: Minimum amount in dollars
+            max_amount: Maximum amount in dollars
+            search: Search text (searches notes, payee, imported_payee)
+            limit: Maximum number of results (default: 100)
 
         Returns:
             List of transactions matching criteria
@@ -187,15 +201,26 @@ class ActualBridgeClient:
         if not self._client:
             raise RuntimeError("Client not initialized. Use async context manager.")
 
-        params = {"account": account}
-        if start_date:
-            params["start_date"] = start_date
-        if end_date:
-            params["end_date"] = end_date
+        payload = {"limit": limit}
 
-        response = await self._client.get(
-            f"{self.base_url}/mcp/transactions/find",
-            params=params
+        if accounts:
+            payload["accounts"] = accounts
+        if category:
+            payload["category"] = category
+        if start_date:
+            payload["start_date"] = start_date
+        if end_date:
+            payload["end_date"] = end_date
+        if min_amount is not None:
+            payload["min_amount"] = min_amount
+        if max_amount is not None:
+            payload["max_amount"] = max_amount
+        if search:
+            payload["search"] = search
+
+        response = await self._client.post(
+            f"{self.base_url}/mcp/transactions/query",
+            json=payload
         )
         response.raise_for_status()
         return response.json()
