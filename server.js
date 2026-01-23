@@ -642,8 +642,8 @@ app.post('/mcp/transactions/query', async (req, res) => {
 
     console.log(`🔍 Running ActualQL query: ${query.replace(/\n/g, ' ').trim()}`);
 
-    // Execute the query (api.runQuery takes {query} as parameter)
-    const result = await api.runQuery({ query });
+    // Execute the query (runQuery takes the query string directly)
+    const result = await api.runQuery(query);
 
     console.log(`✅ Found ${result?.length || 0} transactions`);
 
