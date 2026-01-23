@@ -216,39 +216,83 @@ async def delete_transaction(transaction_id: str) -> dict:
 
 
 # =============================================================================
-# Tool: Find Transactions
+# Tool: Query Transactions
 # =============================================================================
 
 @mcp.tool()
-async def find_transactions(
-    account: str,
+async def query_transactions(
+    accounts: str | list[str] = None,
+    category: str = None,
     start_date: str = None,
-    end_date: str = None
+    end_date: str = None,
+    min_amount: float = None,
+    max_amount: float = None,
+    search: str = None,
+    limit: int = 100
 ) -> list[dict]:
-    """Find transactions by account and date range.
+    """Query transactions with flexible filters using ActualQL.
 
-    Use this to locate a specific transaction by ID when you need to edit or delete it.
+    All parameters are optional - omit to include all.
+
+    DEPENDENCIES: Call list_accounts() first to get exact account names.
+                  Call list_categories() first if filtering by category.
 
     Args:
-        account: Account name - MUST match exactly. Example: "Capital One Checking"
-        start_date: Start date in 'YYYY-MM-DD' format (default: 30 days ago)
-        end_date: End date in 'YYYY-MM-DD' format (default: today)
+        accounts: Account name(s) - single string or list. Example: "Checking" or ["Checking", "Savings"]
+        category: Category name to filter by. Example: "Food"
+        start_date: Start date in 'YYYY-MM-DD' format
+        end_date: End date in 'YYYY-MM-DD' format
+        min_amount: Minimum amount in dollars (e.g., -100 for expenses over $100)
+        max_amount: Maximum amount in dollars (e.g., 0 for expenses only)
+        search: Search text (searches notes, payee, description). Example: "coffee"
+        limit: Maximum number of results (default: 100)
 
     Returns:
-        List of transactions with id, date, amount, payee, notes, category
+        List of transactions with id, date, amount, payee, notes, category, account
 
     Examples:
-        # Find all transactions in an account
-        find_transactions(account='Capital One Checking')
+        # All transactions from last 30 days
+        query_transactions()
 
-        # Find transactions for a specific month
-        find_transactions(account='Capital One Checking',
-                        start_date='2025-01-01',
-                        end_date='2025-01-31')
+        # Transactions in Food category
+        query_transactions(category='Food')
+
+        # Expenses over $50 in January
+        query_transactions(start_date='2025-01-01', end_date='2025-01-31', max_amount=-50)
+
+        # Search for coffee purchases
+        query_transactions(search='coffee')
+
+        # Specific account, recent
+        query_transactions(accounts='Checking', start_date='2025-01-01')
+
+        # Multiple accounts with category filter
+        query_transactions(accounts=['Checking', 'Savings'], category='Transport')
+
+        # All expenses (negative amounts)
+        query_transactions(max_amount=0)
     """
     async with ActualBridgeClient() as client:
-        result = await client.find_transactions(account, start_date, end_date)
-        logger.info(f"Found {len(result)} transactions for account {account}")
+        result = await client.query_transactions(
+            accounts=accounts,
+            category=category,
+            start_date=start_date,
+            end_date=end_date,
+            min_amount=min_amount,
+            max_amount=max_amount,
+            search=search,
+            limit=limit
+        )
+        filters = []
+        if accounts:
+            filters.append(f"accounts={accounts}")
+        if category:
+            filters.append(f"category={category}")
+        if start_date or end_date:
+            filters.append(f"dates={start_date} to {end_date}")
+        if search:
+            filters.append(f"search='{search}'")
+        logger.info(f"Queried transactions: {', '.join(filters) if filters else 'all'} - found {len(result)} results")
         return result
 
 
@@ -268,7 +312,7 @@ def main():
     logger.info("  - get_recent_transactions")
     logger.info("  - edit_transaction")
     logger.info("  - delete_transaction")
-    logger.info("  - find_transactions")
+    logger.info("  - query_transactions")
 
     # Run the server using STDIO transport
     # This will read JSON-RPC messages from stdin and write to stdout
