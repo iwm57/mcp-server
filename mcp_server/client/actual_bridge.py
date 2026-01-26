@@ -105,7 +105,8 @@ class ActualBridgeClient:
 
     async def edit_transaction(self, transaction_id: str, amount: float = None,
                               date: str = None, category: str = None,
-                              notes: str = None, cleared: bool = None):
+                              notes: str = None, cleared: bool = None,
+                              account: str = None):
         """PUT /mcp/transactions/:id - Edit an existing transaction
 
         Args:
@@ -115,6 +116,7 @@ class ActualBridgeClient:
             category: New category name
             notes: New notes/description
             cleared: Whether transaction is cleared
+            account: New account name (moves transaction to different account)
 
         Returns:
             Updated transaction object
@@ -133,6 +135,8 @@ class ActualBridgeClient:
             payload["notes"] = notes
         if cleared is not None:
             payload["cleared"] = cleared
+        if account:
+            payload["account"] = account
 
         response = await self._client.put(
             f"{self.base_url}/mcp/transactions/{transaction_id}",

@@ -131,7 +131,8 @@ async def edit_transaction(
     date: str = None,
     category: str = None,
     notes: str = None,
-    cleared: bool = None
+    cleared: bool = None,
+    account: str = None
 ) -> dict:
     """Edit an existing transaction in Actual Budget.
 
@@ -140,6 +141,7 @@ async def edit_transaction(
     CONSTRAINTS:
     - amount: Negative for expenses, positive for income
     - category: Should match from list_categories() if specified
+    - account: Should match from list_accounts() if specified
 
     Args:
         transaction_id: REQUIRED - The UUID of the transaction (get from recent transactions)
@@ -148,13 +150,14 @@ async def edit_transaction(
         category: New category name (only include if changing)
         notes: New description (only include if changing)
         cleared: Whether transaction has cleared - true/false (only include if changing)
+        account: New account name (only include if changing) - moves transaction to different account
 
     Returns:
         Updated transaction details
     """
     async with ActualBridgeClient() as client:
         result = await client.edit_transaction(transaction_id, amount, date,
-                                               category, notes, cleared)
+                                               category, notes, cleared, account)
         logger.info(f"Edited transaction {transaction_id}")
         return result
 
