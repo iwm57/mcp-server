@@ -90,57 +90,33 @@ async def add_transaction(
 ) -> dict:
     """Add a new transaction to Actual Budget.
 
-    DEPENDENCIES: Call list_accounts() first to get exact account names.
-                  Call list_categories() first if you want to categorize.
+    CRITICAL CONSTRAINTS (enforce these rules):
+    1. account: MUST be exact match from list_accounts() - never guess or make up names
+    2. amount: Negative for expenses (e.g., -10.50), positive for income (e.g., 100.00)
+    3. payee: ONLY for transfers - must be exact account name from list_accounts()
+    4. notes: For purchases/expense descriptions (e.g., "coffee", "groceries")
+    5. date: YYYY-MM-DD format
 
-    IMPORTANT:
-    - For purchases: use 'notes' field (e.g., "coffee at oaks")
-    - For transfers: use 'payee' field with EXACT account name (e.g., "Capital One Savings")
+    DIFFERENTIATING PURCHASES vs TRANSFERS:
+    - PURCHASE: Use 'notes' field with description, leave 'payee' empty
+                Example: add_transaction(account='Checking', amount=-10.50, date='2025-01-19', notes='coffee')
+    - TRANSFER: Use 'payee' field with EXACT destination account name, 'notes' optional
+                Example: add_transaction(account='Checking', amount=-100.00, date='2025-01-19', payee='Savings')
 
     Args:
-        account: Account name - MUST match exactly. Example: "Capital One Checking"
-        amount: Decimal amount e.g. -8.50 for expense, 100.00 for income
+        account: REQUIRED - Account name MUST match exactly from list_accounts()
+        amount: Decimal - Negative for expense, positive for income
         date: Transaction date in 'YYYY-MM-DD' format
-        notes: Purchase description (e.g., "coffee at oaks", "weekly groceries")
-        payee: For transfers ONLY - exact account name (e.g., "Capital One Savings")
-        category: Category name for categorization (e.g., "Food", "Transport")
+        notes: Purchase description (e.g., "coffee", "weekly groceries") - NOT for transfers
+        payee: For transfers ONLY - exact account name from list_accounts()
+        category: Optional category name (e.g., "Food", "Transport")
 
     Returns:
         Confirmation with transaction details including generated ID
-
-    Examples:
-        # Purchase coffee
-        add_transaction(account='Capital One Checking', amount=-8.50,
-                       date='2025-01-19', notes='coffee at oaks')
-
-        # Transfer to savings
-        add_transaction(account='Capital One Checking', amount=-100.00,
-                       date='2025-01-19', payee='Capital One Savings')
     """
     async with ActualBridgeClient() as client:
         result = await client.add_transaction(account, amount, date, notes, payee, category)
         logger.info(f"Added transaction: {result.get('transaction', {})}")
-        return result
-
-
-# =============================================================================
-# Tool: Get Recent Transactions
-# =============================================================================
-
-@mcp.tool()
-async def get_recent_transactions(since_date: str = None) -> list[dict]:
-    """Get recent transactions across all accounts.
-
-    Args:
-        since_date: Optional start date in 'YYYY-MM-DD' format.
-                    Defaults to returning all recent transactions.
-
-    Returns:
-        List of transactions with details including date, amount, payee, account, etc.
-    """
-    async with ActualBridgeClient() as client:
-        result = await client.get_recent_transactions(since_date)
-        logger.info(f"Retrieved {len(result)} transactions since {since_date or 'beginning'}")
         return result
 
 
@@ -155,37 +131,33 @@ async def edit_transaction(
     date: str = None,
     category: str = None,
     notes: str = None,
-    cleared: bool = None
+    cleared: bool = None,
+    account: str = None
 ) -> dict:
     """Edit an existing transaction in Actual Budget.
 
     All parameters except transaction_id are optional - only specify what you want to change.
 
+    CONSTRAINTS:
+    - amount: Negative for expenses, positive for income
+    - category: Should match from list_categories() if specified
+    - account: Should match from list_accounts() if specified
+
     Args:
-        transaction_id: The UUID of the transaction to edit (get from recent transactions)
-        amount: New decimal amount e.g. -8.50 for expense, 100.00 for income
-        date: New transaction date in 'YYYY-MM-DD' format
-        category: New category name (e.g., "Food", "Transport")
-        notes: New description (e.g., "coffee at oaks", "weekly groceries")
-        cleared: Whether transaction has cleared (true/false)
+        transaction_id: REQUIRED - The UUID of the transaction (get from recent transactions)
+        amount: New decimal amount (only include if changing) - negative for expense
+        date: New transaction date in 'YYYY-MM-DD' format (only include if changing)
+        category: New category name (only include if changing)
+        notes: New description (only include if changing)
+        cleared: Whether transaction has cleared - true/false (only include if changing)
+        account: New account name (only include if changing) - moves transaction to different account
 
     Returns:
         Updated transaction details
-
-    Examples:
-        # Change amount
-        edit_transaction(transaction_id='abc123', amount=-15.00)
-
-        # Change category and notes
-        edit_transaction(transaction_id='abc123', category='Food',
-                       notes='lunch at cafe')
-
-        # Clear a transaction
-        edit_transaction(transaction_id='abc123', cleared=True)
     """
     async with ActualBridgeClient() as client:
         result = await client.edit_transaction(transaction_id, amount, date,
-                                               category, notes, cleared)
+                                               category, notes, cleared, account)
         logger.info(f"Edited transaction {transaction_id}")
         return result
 
@@ -201,13 +173,10 @@ async def delete_transaction(transaction_id: str) -> dict:
     WARNING: This action cannot be undone!
 
     Args:
-        transaction_id: The UUID of the transaction to delete (get from recent transactions)
+        transaction_id: REQUIRED - The UUID of the transaction (get from recent transactions)
 
     Returns:
         Confirmation of deletion
-
-    Examples:
-        delete_transaction(transaction_id='abc123')
     """
     async with ActualBridgeClient() as client:
         result = await client.delete_transaction(transaction_id)
@@ -230,47 +199,36 @@ async def query_transactions(
     search: str = None,
     limit: int = 100
 ) -> list[dict]:
-    """Query transactions with flexible filters using ActualQL.
+    """Query transactions with flexible filters.
 
-    All parameters are optional - omit to include all.
+    ALL PARAMETERS ARE OPTIONAL - works on all accounts when omitted.
+    Use this for powerful searching across all transactions.
 
-    DEPENDENCIES: Call list_accounts() first to get exact account names.
-                  Call list_categories() first if filtering by category.
+    CONSTRAINTS:
+    - accounts: Must be exact names from list_accounts() if specified
+    - category: Should match from list_categories() if specified
+    - min_amount: Use negative values for expense thresholds (e.g., -100 for "expenses over $100")
+    - max_amount: Use 0 for "expenses only", negative for "income only"
 
     Args:
-        accounts: Account name(s) - single string or list. Example: "Checking" or ["Checking", "Savings"]
-        category: Category name to filter by. Example: "Food"
-        start_date: Start date in 'YYYY-MM-DD' format
-        end_date: End date in 'YYYY-MM-DD' format
-        min_amount: Minimum amount in dollars (e.g., -100 for expenses over $100)
-        max_amount: Maximum amount in dollars (e.g., 0 for expenses only)
-        search: Search text (searches notes, payee, description). Example: "coffee"
-        limit: Maximum number of results (default: 100)
+        accounts: OPTIONAL - Account name(s): single string or list. Example: "Checking" or ["Checking", "Savings"]
+        category: OPTIONAL - Category name filter. Example: "Food"
+        start_date: OPTIONAL - Start date in 'YYYY-MM-DD' format
+        end_date: OPTIONAL - End date in 'YYYY-MM-DD' format
+        min_amount: OPTIONAL - Minimum amount (e.g., -100 for "over $100 expenses")
+        max_amount: OPTIONAL - Maximum amount (e.g., 0 for "expenses only")
+        search: OPTIONAL - Text search in notes/payee/description. Example: "coffee"
+        limit: OPTIONAL - Max results (default: 100)
 
     Returns:
         List of transactions with id, date, amount, payee, notes, category, account
 
     Examples:
-        # All transactions from last 30 days
-        query_transactions()
-
-        # Transactions in Food category
-        query_transactions(category='Food')
-
-        # Expenses over $50 in January
-        query_transactions(start_date='2025-01-01', end_date='2025-01-31', max_amount=-50)
-
-        # Search for coffee purchases
-        query_transactions(search='coffee')
-
-        # Specific account, recent
-        query_transactions(accounts='Checking', start_date='2025-01-01')
-
-        # Multiple accounts with category filter
-        query_transactions(accounts=['Checking', 'Savings'], category='Transport')
-
-        # All expenses (negative amounts)
-        query_transactions(max_amount=0)
+        query_transactions()  # All recent transactions
+        query_transactions(category='Food')  # Food category
+        query_transactions(max_amount=-50)  # Expenses over $50
+        query_transactions(search='coffee')  # Search for "coffee"
+        query_transactions(start_date='2025-01-01', end_date='2025-01-31')  # January
     """
     async with ActualBridgeClient() as client:
         result = await client.query_transactions(
@@ -309,7 +267,6 @@ def main():
     logger.info("  - list_categories")
     logger.info("  - get_monthly_summary")
     logger.info("  - add_transaction")
-    logger.info("  - get_recent_transactions")
     logger.info("  - edit_transaction")
     logger.info("  - delete_transaction")
     logger.info("  - query_transactions")

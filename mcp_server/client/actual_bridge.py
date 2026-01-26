@@ -103,22 +103,10 @@ class ActualBridgeClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_recent_transactions(self, since_date: str = None):
-        """GET /transactions/recent?since=YYYY-MM-DD - Returns transaction array"""
-        if not self._client:
-            raise RuntimeError("Client not initialized. Use async context manager.")
-
-        params = {"since": since_date} if since_date else {}
-        response = await self._client.get(
-            f"{self.base_url}/transactions/recent",
-            params=params
-        )
-        response.raise_for_status()
-        return response.json()
-
     async def edit_transaction(self, transaction_id: str, amount: float = None,
                               date: str = None, category: str = None,
-                              notes: str = None, cleared: bool = None):
+                              notes: str = None, cleared: bool = None,
+                              account: str = None):
         """PUT /mcp/transactions/:id - Edit an existing transaction
 
         Args:
@@ -128,6 +116,7 @@ class ActualBridgeClient:
             category: New category name
             notes: New notes/description
             cleared: Whether transaction is cleared
+            account: New account name (moves transaction to different account)
 
         Returns:
             Updated transaction object
@@ -146,6 +135,8 @@ class ActualBridgeClient:
             payload["notes"] = notes
         if cleared is not None:
             payload["cleared"] = cleared
+        if account:
+            payload["account"] = account
 
         response = await self._client.put(
             f"{self.base_url}/mcp/transactions/{transaction_id}",

@@ -1,1 +1,1 @@
-"""HTTP client package for actual-bridge API"""
+"""MCP Server Client Package"""
