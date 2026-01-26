@@ -64,18 +64,6 @@ class ActualBridgeClient:
         response.raise_for_status()
         return response.json()
 
-    async def get_monthly_summary(self, month: str):
-        """GET /mcp/summary/month?month=YYYY-MM - Returns {month, income, expenses, net}"""
-        if not self._client:
-            raise RuntimeError("Client not initialized. Use async context manager.")
-
-        response = await self._client.get(
-            f"{self.base_url}/mcp/summary/month",
-            params={"month": month}
-        )
-        response.raise_for_status()
-        return response.json()
-
     async def add_transaction(self, account, amount, date, notes=None, payee=None, category=None):
         """POST /mcp/transactions/add - Add a transaction
 

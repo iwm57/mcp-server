@@ -8,14 +8,12 @@ This MCP server communicates with [actual-bridge](https://github.com/iwm57/actua
 
 ## Features
 
-Exposes 8 MCP tools:
+Exposes 6 MCP tools:
 - `list_accounts` - List all accounts with balances
 - `list_categories` - List all budget categories
-- `get_monthly_summary` - Get monthly budget overview
 - `add_transaction` - Add new transactions (accepts account/category **names**, not IDs)
 - `edit_transaction` - Edit existing transaction
 - `delete_transaction` - Delete a transaction
-- `get_recent_transactions` - Get recent transaction history
 - `query_transactions` - Flexible transaction search with multiple filters
 
 ## Installation
@@ -99,22 +97,7 @@ Returns:
 ]
 ```
 
-#### 3. get_monthly_summary
-```python
-await call_tool("get_monthly_summary", {"month": "2026-01"})
-```
-
-Returns:
-```json
-{
-  "month": "2026-01",
-  "income": 5000.00,
-  "expenses": 3200.00,
-  "net": 1800.00
-}
-```
-
-#### 4. add_transaction
+#### 3. add_transaction
 ```python
 await call_tool("add_transaction", {
   "account": "Checking",  # Use NAME, not ID
@@ -141,28 +124,7 @@ Returns:
 }
 ```
 
-#### 5. get_recent_transactions
-```python
-await call_tool("get_recent_transactions", {
-  "since_date": "2026-01-01"  # Optional
-})
-```
-
-Returns:
-```json
-[
-  {
-    "id": "txn-id",
-    "date": "2026-01-14",
-    "amount": -50.00,
-    "payee": "Store",
-    "account": "Checking",
-    "category": "Groceries"
-  }
-]
-```
-
-#### 6. edit_transaction
+#### 4. edit_transaction
 ```python
 await call_tool("edit_transaction", {
   "transaction_id": "txn-id",
@@ -190,7 +152,7 @@ Returns:
 }
 ```
 
-#### 7. delete_transaction
+#### 5. delete_transaction
 ```python
 await call_tool("delete_transaction", {
   "transaction_id": "txn-id"
@@ -205,7 +167,7 @@ Returns:
 }
 ```
 
-#### 8. query_transactions
+#### 6. query_transactions
 Flexible transaction search with multiple filters:
 ```python
 await call_tool("query_transactions", {
@@ -272,7 +234,7 @@ Actual Budget Data
 mcp-server/
 ├── mcp_server/
 │   ├── __init__.py
-│   ├── server.py              # Main MCP server with 8 tools
+│   ├── server.py              # Main MCP server with 6 tools
 │   └── client/
 │       ├── __init__.py
 │       └── actual_bridge.py    # HTTP client to actual-bridge

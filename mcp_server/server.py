@@ -56,26 +56,6 @@ async def list_categories() -> list[dict]:
 
 
 # =============================================================================
-# Tool: Get Monthly Summary
-# =============================================================================
-
-@mcp.tool()
-async def get_monthly_summary(month: str) -> dict:
-    """Get monthly budget summary showing income, expenses, and net.
-
-    Args:
-        month: Month in 'YYYY-MM' format (e.g., '2026-01')
-
-    Returns:
-        Dictionary with month, income (decimal), expenses (decimal), and net (decimal)
-    """
-    async with ActualBridgeClient() as client:
-        result = await client.get_monthly_summary(month)
-        logger.info(f"Retrieved summary for {month}")
-        return result
-
-
-# =============================================================================
 # Tool: Add Transaction
 # =============================================================================
 
@@ -265,7 +245,6 @@ def main():
     logger.info("Available tools:")
     logger.info("  - list_accounts")
     logger.info("  - list_categories")
-    logger.info("  - get_monthly_summary")
     logger.info("  - add_transaction")
     logger.info("  - edit_transaction")
     logger.info("  - delete_transaction")
