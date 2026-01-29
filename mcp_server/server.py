@@ -189,12 +189,13 @@ async def query_transactions(
     - category: Should match from list_categories() if specified
     - min_amount: Use negative values for expense thresholds (e.g., -100 for "expenses over $100")
     - max_amount: Use 0 for "expenses only", negative for "income only"
+    - IMPORTANT: Use start_date and end_date for date filtering. Do NOT use a 'date' parameter.
 
     Args:
         accounts: OPTIONAL - Account name(s): single string or list. Example: "Checking" or ["Checking", "Savings"]
         category: OPTIONAL - Category name filter. Example: "Food"
-        start_date: OPTIONAL - Start date in 'YYYY-MM-DD' format
-        end_date: OPTIONAL - End date in 'YYYY-MM-DD' format
+        start_date: OPTIONAL - Start date in 'YYYY-MM-DD' format (NOT 'date')
+        end_date: OPTIONAL - End date in 'YYYY-MM-DD' format (NOT 'date')
         min_amount: OPTIONAL - Minimum amount (e.g., -100 for "over $100 expenses")
         max_amount: OPTIONAL - Maximum amount (e.g., 0 for "expenses only")
         search: OPTIONAL - Text search in notes/payee/description. Example: "coffee"
